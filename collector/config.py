@@ -47,6 +47,13 @@ USER_AGENT = (
 MAX_FAILURE_RATIO = 0.4
 MIN_QUERIES_FOR_GATE = 3       # 查詢數太少時不套用比例閘門
 
+# 同一個指紋底下，各平台報價的最高／最低比值超過這個數，就標記為可疑。
+# 真實案例：PChome 的「犀牛盾手機殼組 Galaxy S25」$656 與 momo 的
+# Galaxy S25 手機本體 $23,590，因為型號都抽到 s25 而被合併，
+# 畫面上會顯示「省 $22,934」—— 錯誤的比價結果比沒有比價更糟。
+# 同款商品跨平台價差極少超過兩倍，4 倍留了很寬的餘裕。
+SUSPECT_PRICE_RATIO = 4.0
+
 
 def day_index(d: date | None = None) -> int:
     """把日期壓成小整數。"""

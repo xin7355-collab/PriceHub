@@ -123,6 +123,12 @@ h1{
 }
 .gap{font-family:var(--mono);font-size:10px;color:#7A8894}
 
+.suspect{
+  padding:9px 16px 11px;font-size:11.5px;line-height:1.5;
+  color:#E8836A;background:rgba(232,131,106,.09);
+  border-top:1px solid rgba(232,131,106,.25);
+}
+
 /* 走勢 */
 .spark{padding:12px 16px 14px;border-top:1px solid rgba(240,169,59,.16);display:flex;align-items:center;gap:12px}
 .spark svg{flex:1;height:34px;overflow:visible}
@@ -406,11 +412,18 @@ function card(x, ci){
     const a = el(`<a class="row" href="${esc(o.url)}" target="_blank" rel="noopener nofollow"></a>`);
     a.append(el(`<span class="plat">${PLAT[plat]||plat}</span>`));
     a.append(flaps(o.price, ci*90 + ri*40));
-    a.append(el(ri === 0
-      ? `<span class="best">最低</span>`
-      : `<span class="gap">+${money(diff)}</span>`));
+    // 可疑配對不要標「最低」也不要報價差 —— 那個數字是假的
+    a.append(el(x.suspect
+      ? `<span class="gap">?</span>`
+      : ri === 0 ? `<span class="best">最低</span>`
+                 : `<span class="gap">+${money(diff)}</span>`));
     board.append(a);
   });
+
+  if (x.suspect){
+    board.append(el(`<div class="suspect">價差過大，這兩筆可能不是同一件商品。
+      請點進各平台自行確認，先不要當成比價結果。</div>`));
+  }
 
   const holder = el(`<div class="spark"><span class="lbl">${PLAT[rows[0][0]]||rows[0][0]} 90 天</span></div>`);
   board.append(holder);

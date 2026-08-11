@@ -102,8 +102,17 @@ class Catalog:
                 if priced:
                     price, platform = min(priced)
                     entry["best"] = {"platform": platform, "price": price}
+                    # 價差大到不合理 = 幾乎必然是把兩件不同的商品配在一起
+                    # （手機殼被當成手機那種）。標記起來讓前端不要拿它
+                    # 去宣稱一個假的省錢金額。
+                    hi = max(p for p, _ in priced)
+                    if len(priced) > 1 and hi >= price * config.SUSPECT_PRICE_RATIO:
+                        entry["suspect"] = True
+                    else:
+                        entry.pop("suspect", None)
                 else:
                     entry.pop("best", None)
+                    entry.pop("suspect", None)
             _atomic_write(config.CATALOG_DIR / f"{sh}.json", shard)
 
         # 統計要掃全部分片，不只髒的
