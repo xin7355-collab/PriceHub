@@ -25,6 +25,7 @@ from . import config, storage
 from .httpclient import RateLimitedClient
 from .normalize import fingerprint
 from .sources import browser  # noqa: F401  註冊 profiles/*.json 定義的瀏覽器平台
+from .sources import momo  # noqa: F401  註冊用
 from .sources import pchome  # noqa: F401  註冊用
 from .sources.base import REGISTRY
 

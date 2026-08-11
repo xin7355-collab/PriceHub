@@ -7,7 +7,8 @@
 ```bash
 pip install -r requirements.txt
 python tests/test_normalize.py     # 離線測試，不需網路
-python tests/test_browser.py       # 同上（瀏覽器採集層）
+python tests/test_momo.py          # 同上（momo 解析層）
+python tests/test_storage.py tests/test_watchlist.py tests/test_browser.py
 python tools/seed_demo.py          # 產生示範資料
 python -m http.server 8000
 # 開啟 http://localhost:8000/web/
@@ -34,12 +35,14 @@ collector/
   httpclient.py  Semaphore 限流 + 指數退避 + jitter
   normalize.py   標題清理、品牌型號抽取、跨平台指紋  ← 核心
   storage.py     分片 catalog + append-only 時序，原子寫入
-  sources/       每個平台一個檔案
-  profiles/      瀏覽器採集的 CSS 選擇器（JSON，改版時只改這裡）
+  sources/       每個平台一個檔案（pchome=JSON API、momo=ld+json）
+  profiles/      瀏覽器採集的 CSS 選擇器（目前是空的，見下方說明）
   run.py         單平台採集入口，含品質閘門
   browse.py      調選擇器用的除錯工具（本機）
 web/index.html   單檔前端
-tools/seed_demo.py  離線示範資料
+edge/            即時搜尋代理（Cloudflare Worker，選用）
+tools/seed_demo.py       離線示範資料
+tools/probe_platforms.py 通路可行性偵察
 ```
 
 ## 三分支架構
@@ -139,49 +142,78 @@ cd edge && wrangler deploy
 
 `run.py` 與 workflow 的其他部分完全不用改。
 
-**沒有 API 的平台**（momo / Yahoo / 蝦皮，本機跑）：不用寫 Python，
-在 `collector/profiles/` 放一個 JSON 就會自動註冊成一個平台。詳見下節。
+**HTML 裡有結構化資料的平台**（如 momo 的 `ld+json`）：一樣寫在
+`collector/sources/`，用 `client.get_text()` 取頁再解，不需要瀏覽器。
+
+**純 JS 渲染的平台**（Yahoo / 蝦皮）：不用寫 Python，在 `collector/profiles/`
+放一個 CSS 選擇器 JSON 就會自動註冊成一個平台，但只能在本機跑。詳見下節。
+
+新增通路前先跑 `python tools/probe_platforms.py` 確認它屬於哪一種。
 
 ### 通路優先序
 
 | 平台 | 取數方式 | 狀態 |
 |---|---|---|
 | PChome | 公開搜尋端點，無需金鑰 | ✅ 已實作 |
-| momo | 聯盟網 Affiliates.One 商品 API | 待申請 |
-| 蝦皮 | 蝦皮分潤計畫（需社群 300 好友 + 審核） | 待申請 |
-| Yahoo | 聯盟網 / 通路王 | 待申請 |
+| momo | 搜尋頁內嵌的 schema.org `ld+json` | ✅ 已實作 |
+| Yahoo | 純 JS 渲染，HTML 裡沒有商品 | 需瀏覽器 |
+| 蝦皮 | 純 JS 渲染，HTML 裡沒有商品 | 需瀏覽器 |
+| friDay | 搜尋頁只回 2.8KB（導頁） | 需瀏覽器 |
+| 台灣樂天 | 連線逾時 | 待查 |
 | 酷澎 | Coupang Open API 是**賣家**用，非商品搜尋 | v2 再議 |
 | 淘寶 | 淘寶客申請門檻高；跨境運費關稅使比價失真 | v2 再議 |
 
-不建議在 GitHub Actions 上用瀏覽器硬爬蝦皮／淘寶：runner 的出口是 Azure 資料中心 IP，
-會被風控直接擋下，成功率低到無法當產品用。走官方通路是唯一能穩定運轉的路。
+以上不是查資料查來的，是 `tools/probe_platforms.py` 從 GitHub Actions 實測的結果
+（Actions → 通路偵察，隨時可重跑）。
+
+**原本寫在這裡的「runner 出口是資料中心 IP，會被風控直接擋下」並不成立** ——
+實測 6 個平台有 5 個回 200，包含蝦皮。真正的分野不是 IP 被不被擋，而是
+**商品資料在不在 HTML 裡**：
+
+- PChome 有公開 JSON 端點 → 直接打
+- momo 把商品放在 `ld+json`（一次 30 筆，含名稱／價格／圖片／網址）→ 直接解
+- Yahoo／蝦皮／friDay 的 HTML 是空殼，商品由 JS 事後抓 → 只能用瀏覽器
+
+所以 momo 不需要聯盟網 API，也不需要瀏覽器。順帶一提，聯盟網是**分潤制**，
+本來就不用付費；門檻是審核不是費用。
+
+加通路之前先跑一次偵察：
+
+```bash
+python tools/probe_platforms.py            # 全部掃一遍
+python tools/probe_platforms.py --deep momo # 把內嵌 JSON 的結構攤開
+```
 
 ## 瀏覽器採集（選用，只在本機跑）
 
-聯盟網 API 申請下來之前，momo 這類平台可以先用 [crawl4ai](https://github.com/unclecode/crawl4ai)
-從自己的機器（住宅 IP）補資料。**不要加進 `collect.yml` 的 matrix** —— 理由同上一節。
+Yahoo 與蝦皮的 HTML 是空殼（實測 0 個商品連結），只能用瀏覽器把頁面跑起來再解。
+[crawl4ai](https://github.com/unclecode/crawl4ai) 負責這一段。
+
+**不要加進 `collect.yml` 的 matrix**：瀏覽器很慢很重，而且這類站台的風控
+針對的正是自動化瀏覽器。這條路是給你在自己機器上臨時補資料用的。
 
 ```bash
 pip install -r requirements-browser.txt
 python -m playwright install chromium
 
-# 1. 把渲染後的 HTML 存下來
-python -m collector.browse --platform momo --keyword "WH-1000XM5" --dump
+# 0. 先在 collector/profiles/ 放一個 yahoo.json（照 momo 那種形狀）
 
-# 2. 對著 dumps/momo.html 調 collector/profiles/momo.json 的選擇器，
-#    不碰網路，改一次試一次
-python -m collector.browse --platform momo --from-dump dumps/momo.html
+# 1. 把渲染後的 HTML 存下來
+python -m collector.browse --platform yahoo --keyword "WH-1000XM5" --dump
+
+# 2. 對著 dumps/yahoo.html 調選擇器，不碰網路，改一次試一次
+python -m collector.browse --platform yahoo --from-dump dumps/yahoo.html
 
 # 3. 選擇器對了再正式採集，寫進與 pchome 完全相同的 data/
-python -m collector.run --platform momo
+python -m collector.run --platform yahoo
 ```
 
 選擇器放在 `collector/profiles/{平台}.json`，站台改版時只要改 JSON，不用動 Python。
 放一個新的 JSON 進去就等於多一個平台。
 
-> ⚠️ 內附的 `momo.json` 選擇器是**起手式，尚未對真實頁面驗證過**（`"verified": false`）。
-> 第一次使用一定要照上面步驟一、二核對過再採集。抽到 0 筆幾乎都是選擇器沒對上，
-> 不是程式壞了 —— `browse` 會把 baseSelector 抽到幾列、第一列長什麼樣印給你看。
+> momo 已經改走 `collector/sources/momo.py` 的 `ld+json`，不需要瀏覽器，
+> 因此不再附任何 profile。這條路留給 Yahoo／蝦皮這種純 JS 渲染的平台 ——
+> 實測它們的 HTML 裡連一個商品連結都沒有，只剩瀏覽器一途。
 
 ## 設計約束
 

@@ -33,6 +33,7 @@ jobs:
           python tests/test_browser.py
           python tests/test_storage.py
           python tests/test_watchlist.py
+          python tests/test_momo.py
 
       - name: 即時搜尋代理的離線測試
         # 解析層壞掉不會拋錯，只會回 0 筆 —— 沒有測試就只能等使用者回報。
