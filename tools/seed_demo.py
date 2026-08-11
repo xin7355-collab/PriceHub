@@ -90,9 +90,11 @@ def main() -> None:
             n_offers += 1
 
     stats = catalog.finalize()
+    # 通路清單由 finalize() 從實際報價算出，不要在這裡覆寫成 PLATFORM_BIAS ——
+    # 那份表列了 coupang，但沒有任何一件示範商品有 coupang 的報價，
+    # 覆寫的話前端就會顯示「5 個通路」而其實只有 4 個。
     stats.update(updated_day=config.day_index(today),
                  updated_at=today.isoformat(),
-                 platforms=sorted(PLATFORM_BIAS),
                  demo=True)
     storage.write_index(stats)
     print(f"示範資料已產生：{stats['products']} 件商品 / "

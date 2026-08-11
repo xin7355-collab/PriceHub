@@ -110,7 +110,6 @@ async def collect(platform: str, keywords: list[str], limit: int) -> int:
     stats = catalog.finalize()
     stats["updated_day"] = today
     stats["updated_at"] = date.today().isoformat()
-    stats["platforms"] = sorted(REGISTRY.keys())
     storage.write_index(stats)
     log.info("索引已更新：%d 件商品 / %d 個分片",
              stats["products"], len(stats["shards"]))

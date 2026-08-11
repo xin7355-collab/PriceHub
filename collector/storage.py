@@ -108,11 +108,17 @@ class Catalog:
 
         # 統計要掃全部分片，不只髒的
         shards = []
+        platforms: set[str] = set()
         for p in sorted(config.CATALOG_DIR.glob("*.json")):
             data = _read(p, {})
             total_products += len(data)
             shards.append(p.stem)
-        return {"shards": shards, "products": total_products}
+            for entry in data.values():
+                platforms.update(entry.get("offers") or {})
+        # 通路數要數「真的有報價的平台」。用 REGISTRY 會把已註冊但還沒接通
+        # 的平台也算進去，前端就會顯示「2 個通路」但其實只有一個有資料。
+        return {"shards": shards, "products": total_products,
+                "platforms": sorted(platforms)}
 
 
 # ---------------------------------------------------------------- Series
