@@ -39,13 +39,65 @@ def test_cross_platform_match():
     fa, ma = fingerprint(shopee)
     fb, mb = fingerprint(pchome)
     assert fa == fb, f"指紋不一致 {ma} vs {mb}"
-    assert ma["level"] == "strong"
+    # "3s" 只有兩碼，不足以單獨指認一款商品，要靠品牌撐 → medium
+    assert ma["level"] == "medium"
 
 
-def test_different_color_is_different_sku():
-    a, _ = fingerprint("Logitech MX Master 3S 無線滑鼠 石墨灰")
+def test_same_model_different_color_merges():
+    """刻意的行為反轉。
+
+    原本顏色是指紋的一部分，不同顏色算不同 SKU。但實測真實標題後發現，
+    這條規則讓跨平台比對大量失敗 —— momo 寫「【SONY 索尼】WH-1000XM5 …」
+    不帶顏色，PChome 寫「WH-1000XM5 黑色 …」帶顏色，同一件商品因此拆成
+    兩張卡片。
+
+    改成顏色不列入身分。顏色仍然存在 meta 裡可供顯示，只是不再切開商品。
+    同型號不同顏色的價差通常很小，把它們併在一起顯示最低價，
+    比讓使用者看到兩張各自只有一個通路的卡片有用得多。
+    """
+    a, ma = fingerprint("Logitech MX Master 3S 無線滑鼠 石墨灰")
     b, _ = fingerprint("Logitech MX Master 3S 無線滑鼠 白色")
+    assert a == b
+    assert ma["color"] == "石墨灰", "顏色不進指紋，但仍要抽出來"
+
+
+def test_different_capacity_is_different_product():
+    """顏色可以合併，容量不行 —— 差別在於它直接影響價格。
+    這是 CSE 那份專案的 LLM 驗證規則第 3 條，也符合直覺。"""
+    a, _ = fingerprint("Kingston FURY Beast DDR5 32GB 桌上型記憶體")
+    b, _ = fingerprint("Kingston FURY Beast DDR5 16GB 桌上型記憶體")
     assert a != b
+
+    c, _ = fingerprint("Samsung 990 PRO 2TB M.2 SSD")
+    d, _ = fingerprint("Samsung 990 PRO 4TB M.2 SSD")
+    assert c != d
+
+
+def test_short_model_must_not_merge_across_brands():
+    """回歸：DDR5 是規格標準不是型號，只有 4 碼。若讓它單獨成為合併依據，
+    Kingston 與 Crucial 的記憶體會被併成同一件商品 —— 而且兩者價格接近，
+    價差防線也攔不住。這種靜默的錯誤合併最危險。"""
+    a, _ = fingerprint("Kingston FURY Beast DDR5 16GB 桌上型記憶體")
+    b, _ = fingerprint("Crucial DDR5 16GB 桌上型記憶體")
+    assert a != b
+
+
+def test_distinctive_model_merges_without_brand():
+    """關鍵修正：PChome 常把品牌放在獨立欄位，標題裡沒有品牌字樣。
+    型號夠獨特時就不該再要求品牌一致。"""
+    momo = "【SONY 索尼】WH-1000XM5 主動式降噪旗艦藍芽耳機(公司貨 保固12+6個月)"
+    pchome = "WH-1000XM5 黑色 主動式降噪旗艦 藍牙耳機(頂級降噪 極真音質 配戴舒適)"
+    fa, ma = fingerprint(momo)
+    fb, mb = fingerprint(pchome)
+    assert mb["brand"] is None, "PChome 這個標題確實沒有品牌字樣"
+    assert fa == fb, f"應合併：{ma} vs {mb}"
+
+
+def test_specs_order_does_not_matter():
+    """兩個平台把規格寫在標題不同位置，集合相同就該得到相同的鍵。"""
+    a, _ = fingerprint("Kingston FURY DDR5 5600 32GB 記憶體")
+    b, _ = fingerprint("Kingston FURY 32GB DDR5 5600 記憶體")
+    assert a == b
 
 
 def test_brand_inside_brackets():

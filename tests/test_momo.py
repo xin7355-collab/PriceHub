@@ -89,23 +89,22 @@ def test_cross_platform_fingerprint_matches_when_titles_align():
         fingerprint("Logitech MX Master 3S 靜音無線滑鼠-石墨灰")[0], "羅技對不上"
 
 
-def test_known_gap_pchome_titles_often_omit_brand():
-    """已知缺口，接上 momo 才暴露出來：
+def test_pchome_titles_without_brand_still_merge():
+    """這一組原本是「已知缺口」—— 接上 momo 才暴露出來的：
 
     momo    【SONY 索尼】WH-1000XM5 …          → brand=sony  color=None
     PChome  WH-1000XM5 黑色 主動式降噪旗艦 …    → brand=None  color=黑色
 
     PChome 把品牌放在獨立欄位而不是標題裡，所以同一件商品在品牌與顏色
-    兩處都對不上，指紋因此不同 —— 兩個平台會各自成為一張卡片。
+    兩處都對不上，兩個平台各自成為一張卡片。
 
-    這個測試釘住「目前確實不合併」這件事實，不是在說它是對的。
-    修好之後這裡會變成 assertEqual，那時要一併更新。
+    指紋規則改成「型號夠獨特就不再要求品牌一致，顏色不列入身分」之後，
+    這一組終於合併了。缺口補上，測試也跟著反過來。
     """
     momo_t = "【SONY 索尼】WH-1000XM5 主動式降噪旗艦藍芽耳機(公司貨 保固12+6個月)"
     pchome_t = "WH-1000XM5 黑色 主動式降噪旗艦 藍牙耳機(頂級降噪 極真音質 配戴舒適)"
-    assert fingerprint(momo_t)[1]["brand"] == "sony"
-    assert fingerprint(pchome_t)[1]["brand"] is None, "PChome 標題沒有品牌字樣"
-    assert fingerprint(momo_t)[0] != fingerprint(pchome_t)[0]
+    assert fingerprint(pchome_t)[1]["brand"] is None, "PChome 標題確實沒有品牌字樣"
+    assert fingerprint(momo_t)[0] == fingerprint(pchome_t)[0], "應該要合併了"
 
 
 if __name__ == "__main__":

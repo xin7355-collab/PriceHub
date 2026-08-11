@@ -181,5 +181,9 @@ def read_series(fp: str) -> dict:
 
 
 # ---------------------------------------------------------------- Manifest
+def read_index() -> dict:
+    return _read(config.INDEX_FILE, {})
+
+
 def write_index(stats: dict) -> None:
     _atomic_write(config.INDEX_FILE, stats)
