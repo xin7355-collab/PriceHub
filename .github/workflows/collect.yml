@@ -158,3 +158,53 @@ jobs:
             "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" \
             gh-pages
           echo "已發佈 $(find . -type f -not -path './.git/*' | wc -l) 個檔案到 gh-pages"
+
+  verify:
+    # 推上 gh-pages 不等於網站是好的。Pages 可能沒開、可能建置失敗、
+    # 資料路徑可能又壞掉 —— 這些都不會讓上面任何一步變紅。
+    # 每一班都真的去抓一次線上網址，壞了才會有人知道。
+    needs: publish
+    if: always()
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: 確認線上網址真的活著
+        run: |
+          set -euo pipefail
+          OWNER="${GITHUB_REPOSITORY%%/*}"
+          REPO="${GITHUB_REPOSITORY#*/}"
+          URL="https://${OWNER,,}.github.io/${REPO}/"
+          # 使用者站台（repo 名就是 <帳號>.github.io）不帶子路徑
+          if [ "${REPO,,}" = "${OWNER,,}.github.io" ]; then
+            URL="https://${OWNER,,}.github.io/"
+          fi
+          echo "檢查 $URL"
+
+          # Pages 從分支重建有延遲，最多等 5 分鐘
+          code=000
+          for i in $(seq 1 20); do
+            code=$(curl -sS -L -o page.html -w '%{http_code}' "$URL" || echo 000)
+            [ "$code" = "200" ] && break
+            echo "  [$i] HTTP $code，15 秒後重試"
+            sleep 15
+          done
+          if [ "$code" != "200" ]; then
+            echo "::error::網站沒有回應 200（最後一次 $code）。"
+            echo "::error::若這是第一次部署，請到 Settings → Pages 把 Source 設為 gh-pages 分支。"
+            exit 1
+          fi
+          grep -q "PRICEPORT" page.html || {
+            echo "::error::回應了 200，但內容不是比價通的頁面"; exit 1; }
+
+          # 前端讀不到 index.json 就只會是一片空白，所以要單獨驗它
+          curl -sSf -o idx.json "${URL}data/index.json"
+          python3 - <<'PY'
+          import json
+          d = json.load(open("idx.json"))
+          assert d.get("products", 0) > 0, f"線上沒有任何商品：{d}"
+          assert d.get("platforms"), f"線上沒有任何通路：{d}"
+          print(f"線上資料：{d['products']} 件商品 / "
+                f"通路 {','.join(d['platforms'])} / 更新於 {d['updated_at']}")
+          PY
+          echo "網站正常：$URL"
