@@ -1,0 +1,27 @@
+name: 通路偵察
+
+# 在寫任何一個平台的解析器之前，先確認「從這個 IP 到底打不打得到」。
+# README 斷言 Actions 的資料中心 IP 會被風控擋下，但 PChome 明明就通 ——
+# 猜不如測。加通路時重跑這支，比讀十篇部落格有用。
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "tools/probe_platforms.py"
+      - ".github/workflows/probe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: 偵察各通路
+        run: python tools/probe_platforms.py
