@@ -33,3 +33,6 @@ jobs:
 
       - name: 深入偵察 Yahoo
         run: python tools/probe_platforms.py --deep yahoo
+
+      - name: 深入偵察 蝦皮
+        run: python tools/probe_platforms.py --deep shopee
