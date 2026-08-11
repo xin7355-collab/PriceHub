@@ -24,6 +24,7 @@ def _fresh_storage(tmp: Path):
 
     from collector import storage
     importlib.reload(storage)
+    storage.config = config          # 測試裡要拿到同一份被改過的設定
     return storage
 
 
@@ -131,6 +132,46 @@ def test_index_counts_only_platforms_with_offers():
         stats = cat.finalize()
         assert stats["platforms"] == ["pchome"], stats["platforms"]
         assert stats["products"] == 1
+
+
+def _cat_with(st, offers):
+    cat = st.Catalog()
+    meta = {"clean": "測試", "brand": None, "model": "s25",
+            "color": None, "level": "medium"}
+    for plat, price in offers:
+        cat.upsert("abc123456789", meta, {
+            "platform": plat, "title": "測試", "price": price,
+            "url": f"https://example.invalid/{plat}", "image": None, "day": 2400})
+    cat.finalize()
+    import json
+    with (st.config.CATALOG_DIR / "ab.json").open(encoding="utf-8") as f:
+        return json.load(f)["abc123456789"]
+
+
+def test_absurd_price_gap_is_flagged_as_suspect():
+    """真實案例：PChome 的「犀牛盾手機殼組 Galaxy S25」$656 與 momo 的
+    Galaxy S25 手機本體 $23,590，因為型號都抽到 s25 而被合併，畫面上會
+    顯示「省 $22,934」。錯誤的比價結果比沒有比價更糟。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        e = _cat_with(st, [("pchome", 656), ("momo", 23590)])
+        assert e.get("suspect") is True, e
+
+
+def test_normal_price_gap_is_not_flagged():
+    """跨平台的正常價差不能被誤標 —— 那會把真的比價結果也蓋掉。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        e = _cat_with(st, [("pchome", 9900), ("momo", 8690)])
+        assert "suspect" not in e, e
+        assert e["best"]["price"] == 8690
+
+
+def test_single_platform_is_never_suspect():
+    """只有一個報價根本沒得比，不該被標記。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        assert "suspect" not in _cat_with(st, [("pchome", 100)])
 
 
 def test_atomic_write_leaves_no_temp_files():
