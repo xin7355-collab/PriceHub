@@ -1,10 +1,80 @@
 {
-  "note": "採集清單。新增關鍵字後，下一班排程（每 6 小時）會自動納入。",
+  "note": "採集清單。新增關鍵字後，push 到 main 會立刻跑一班，之後每 6 小時自動更新。",
+
+  "_exclude_common": "搜『AirPods Pro 2』回來的前幾十筆幾乎都是保護殼、貼膜、掛繩 —— 它們確實是商品，但不是要比價的那一件，而且因為便宜會直接霸佔最低價排序的最前面。這份清單套用到所有沒有自訂 exclude 的項目；某一筆若寫了 \"exclude\": []，代表它不套用。",
+  "exclude_common": [
+    "保護殼", "保護套", "保護貼", "保護膜", "鋼化膜", "貼膜", "皮套", "矽膠套",
+    "耳機殼", "殼套", "錶帶", "腕帶", "手繩",
+    "收納包", "收納盒", "背包", "掛繩", "吊飾", "支架", "底座", "腳架",
+    "轉接", "轉換器", "延長線", "傳輸線", "充電線", "替換", "耳塞", "耳掛",
+    "濾網", "清潔", "貼紙", "模型", "玩具", "二手", "福利品", "維修", "零件"
+  ],
+
   "items": [
-    { "keyword": "Logitech MX Master 3S", "tag": "周邊" },
-    { "keyword": "AirPods Pro 2",         "tag": "音訊" },
-    { "keyword": "Sony WH-1000XM5",       "tag": "音訊" },
-    { "keyword": "Anker 行動電源",         "tag": "配件" },
-    { "keyword": "Kingston DDR5 32GB",    "tag": "零組件" }
+    { "keyword": "Logitech MX Master 3S 滑鼠",   "tag": "周邊" },
+    { "keyword": "Logitech MX Keys 鍵盤",        "tag": "周邊" },
+    { "keyword": "羅技 G304 無線滑鼠",            "tag": "周邊" },
+    { "keyword": "Razer 電競滑鼠",                "tag": "周邊" },
+    { "keyword": "SteelSeries 電競耳機",          "tag": "周邊" },
+
+    { "keyword": "AirPods Pro 2 耳機",           "tag": "音訊" },
+    { "keyword": "AirPods 4 耳機",               "tag": "音訊" },
+    { "keyword": "Sony WH-1000XM5 耳機",         "tag": "音訊" },
+    { "keyword": "Sony WF-1000XM5 耳機",         "tag": "音訊" },
+    { "keyword": "Bose QuietComfort 耳機",       "tag": "音訊" },
+    { "keyword": "JBL 藍牙喇叭",                  "tag": "音訊" },
+    { "keyword": "Marshall 藍牙喇叭",             "tag": "音訊" },
+
+    { "keyword": "iPhone 16 Pro",                "tag": "手機" },
+    { "keyword": "iPhone 16",                    "tag": "手機" },
+    { "keyword": "Samsung Galaxy S25",           "tag": "手機" },
+    { "keyword": "Google Pixel 9",               "tag": "手機" },
+    { "keyword": "ASUS Zenfone 手機",             "tag": "手機" },
+
+    { "keyword": "iPad Air",                     "tag": "平板" },
+    { "keyword": "iPad Pro",                     "tag": "平板" },
+    { "keyword": "Samsung Galaxy Tab",           "tag": "平板" },
+
+    { "keyword": "MacBook Air M4",               "tag": "筆電" },
+    { "keyword": "MacBook Pro M4",               "tag": "筆電" },
+    { "keyword": "ASUS Zenbook 筆電",             "tag": "筆電" },
+    { "keyword": "Lenovo ThinkPad 筆電",          "tag": "筆電" },
+    { "keyword": "Acer Swift 筆電",               "tag": "筆電" },
+    { "keyword": "MSI 電競筆電",                  "tag": "筆電" },
+
+    { "keyword": "Apple Watch Series 10",        "tag": "穿戴" },
+    { "keyword": "Garmin 運動手錶",               "tag": "穿戴" },
+    { "keyword": "小米手環",                      "tag": "穿戴" },
+
+    { "keyword": "Kingston FURY DDR5 記憶體",     "tag": "零組件" },
+    { "keyword": "美光 Crucial DDR5 記憶體",      "tag": "零組件" },
+    { "keyword": "Samsung 990 PRO SSD",          "tag": "零組件" },
+    { "keyword": "WD Black SN850X SSD",          "tag": "零組件" },
+    { "keyword": "Seagate 外接硬碟",              "tag": "零組件" },
+    { "keyword": "RTX 5070 顯示卡",               "tag": "零組件" },
+    { "keyword": "RTX 5080 顯示卡",               "tag": "零組件" },
+    { "keyword": "AMD Ryzen 處理器",              "tag": "零組件" },
+    { "keyword": "Intel Core i7 處理器",          "tag": "零組件" },
+
+    { "keyword": "Anker 行動電源",                "tag": "配件" },
+    { "keyword": "Anker 充電器 GaN",              "tag": "配件" },
+    { "keyword": "Belkin 無線充電",               "tag": "配件" },
+
+    { "keyword": "Dyson 吹風機",                  "tag": "家電" },
+    { "keyword": "Dyson 無線吸塵器",              "tag": "家電" },
+    { "keyword": "Panasonic 電子鍋",              "tag": "家電" },
+    { "keyword": "象印 保溫瓶",                   "tag": "家電" },
+    { "keyword": "Philips 氣炸鍋",                "tag": "家電" },
+    { "keyword": "LG 空氣清淨機",                 "tag": "家電" },
+    { "keyword": "大金 除濕機",                   "tag": "家電" },
+
+    { "keyword": "Nintendo Switch 2 主機",        "tag": "遊戲" },
+    { "keyword": "PS5 主機",                      "tag": "遊戲" },
+    { "keyword": "Steam Deck",                    "tag": "遊戲" },
+
+    { "keyword": "LG OLED 電視",                  "tag": "影音" },
+    { "keyword": "Sony BRAVIA 電視",              "tag": "影音" },
+    { "keyword": "BenQ 螢幕",                     "tag": "影音" },
+    { "keyword": "ASUS ROG 電競螢幕",             "tag": "影音" }
   ]
 }
