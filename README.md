@@ -45,7 +45,14 @@ tools/seed_demo.py  離線示範資料
 |---|---|---|
 | `main` | 程式碼 + workflow | 程式碼歷史要乾淨 |
 | `data` | 價格 JSON | 高頻 commit，不該污染程式碼歷史 |
-| `gh-pages` | 前端（由 workflow 產出） | 部署產物與原始碼分離 |
+| Pages | 前端 + 資料快照（由 workflow 部署） | 部署產物與原始碼分離 |
+
+`data` 分支不需要手動建立 —— workflow 第一次跑時偵測不到就會自動開一個孤兒分支。
+`main` 的 `.gitignore` 擋掉 `/data/`，所以本機跑採集或 `seed_demo.py` 不會弄髒程式碼歷史。
+
+前端部署走 GitHub Actions Pages（`actions/deploy-pages`），workflow 會用
+`configure-pages` 的 `enablement: true` 自動把 Pages 打開。若你的組織政策禁止
+自動開啟，到 **Settings → Pages → Source** 手動選 **GitHub Actions** 即可。
 
 ## 資料格式
 

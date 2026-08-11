@@ -1,0 +1,47 @@
+name: 測試
+
+# 比對層是本專案最容易默默壞掉的一層，且它壞掉時採集仍會「成功」，
+# 只是寫進一堆對不上的指紋。所以每次 push / PR 都要跑一次。
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 離線測試（不需網路）
+        run: python tests/test_normalize.py
+
+      - name: 示範資料可產生且格式正確
+        # 這步同時驗證 storage 分片、時序寫入與 index 產出，
+        # 是不碰網路就能做到的最完整端對端檢查。
+        run: |
+          python tools/seed_demo.py
+          python - <<'PY'
+          import json, pathlib
+          idx = json.loads(pathlib.Path("data/index.json").read_text(encoding="utf-8"))
+          assert idx["products"] > 0, idx
+          for sh in idx["shards"]:
+              p = pathlib.Path(f"data/catalog/{sh}.json")
+              assert p.exists(), p
+              for fp, entry in json.loads(p.read_text(encoding="utf-8")).items():
+                  assert entry["offers"], fp
+                  assert entry["best"]["price"] > 0, fp
+          print(f"OK：{idx['products']} 件商品 / {len(idx['shards'])} 個分片")
+          PY

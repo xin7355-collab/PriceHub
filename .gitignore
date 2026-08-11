@@ -2,3 +2,10 @@ __pycache__/
 *.pyc
 .venv/
 *.tmp
+
+# 價格資料活在 data 分支，不進 main 的歷史。
+# 本機跑 tools/seed_demo.py 或採集會在這裡產生檔案，不要 commit。
+/data/
+
+# workflow 用來掛 data 分支的 worktree
+/databr/
