@@ -1,0 +1,10 @@
+{
+  "note": "採集清單。新增關鍵字後，下一班排程（每 6 小時）會自動納入。",
+  "items": [
+    { "keyword": "Logitech MX Master 3S", "tag": "周邊" },
+    { "keyword": "AirPods Pro 2",         "tag": "音訊" },
+    { "keyword": "Sony WH-1000XM5",       "tag": "音訊" },
+    { "keyword": "Anker 行動電源",         "tag": "配件" },
+    { "keyword": "Kingston DDR5 32GB",    "tag": "零組件" }
+  ]
+}

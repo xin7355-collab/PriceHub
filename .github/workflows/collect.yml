@@ -1,0 +1,100 @@
+name: 採集價格
+
+on:
+  schedule:
+    # 每 6 小時一班。GitHub 的 cron 在整點高峰會延遲甚至跳過，
+    # 因此刻意錯開到 :17，並且程式本身設計為冪等可補跑。
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+    inputs:
+      keywords:
+        description: "臨時關鍵字（逗號分隔），留白則使用 watchlist.json"
+        required: false
+  repository_dispatch:
+    # 前端「加入追蹤」用這個事件觸發，免伺服器
+    types: [track-product]
+
+permissions:
+  contents: write
+
+concurrency:
+  # 同一時間只跑一輪。排隊而非取消 —— 取消掉的那輪資料就永久缺一格了。
+  group: collect
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      # 故障隔離：任一平台掛掉不影響其他平台的資料更新。
+      # 這是「零當機」的真正來源 —— 隔離故障，而非預防故障。
+      fail-fast: false
+      max-parallel: 1          # 序列執行，避免多個 job 同時 push 撞車
+      matrix:
+        platform: [pchome]     # 接通新平台後往這裡加，程式碼不用改
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: data
+          fetch-depth: 1
+
+      - name: 取回採集程式
+        run: |
+          git fetch --depth=1 origin main
+          git checkout origin/main -- collector tools watchlist.json requirements.txt
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 離線測試
+        run: python tests/test_normalize.py || true
+
+      - name: 採集 ${{ matrix.platform }}
+        id: collect
+        run: |
+          python -m collector.run \
+            --platform ${{ matrix.platform }} \
+            ${{ github.event.inputs.keywords && format('--keywords "{0}"', github.event.inputs.keywords) || '' }}
+
+      - name: 寫回 data 分支
+        if: steps.collect.outcome == 'success'
+        run: |
+          git config user.name  "priceport-bot"
+          git config user.email "priceport-bot@users.noreply.github.com"
+          git checkout -- collector tools watchlist.json requirements.txt 2>/dev/null || true
+          git rm -r --cached collector tools watchlist.json requirements.txt -q 2>/dev/null || true
+          git add data
+          if git diff --cached --quiet; then
+            echo "價格無變動，跳過 commit"
+            exit 0
+          fi
+          git commit -m "chore(${{ matrix.platform }}): 價格更新 $(date -u +%Y-%m-%dT%H:%MZ)"
+          # 併發推送競爭：先 rebase 再推，最多重試三次
+          for i in 1 2 3; do
+            git pull --rebase --autostash origin data && git push origin HEAD:data && exit 0
+            echo "推送衝突，第 $i 次重試"; sleep $((i * 5))
+          done
+          exit 1
+
+  publish:
+    needs: collect
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { ref: main }
+      - name: 組合前端 + 資料
+        run: |
+          mkdir -p _site
+          cp -r web/* _site/
+          git fetch --depth=1 origin data
+          git checkout origin/data -- data
+          cp -r data _site/data
+      - uses: actions/upload-pages-artifact@v3
+        with: { path: _site }
