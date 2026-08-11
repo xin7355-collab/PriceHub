@@ -19,6 +19,7 @@ import json
 import logging
 import sys
 from datetime import date
+from typing import NamedTuple
 
 from . import config, storage
 from .httpclient import RateLimitedClient
@@ -35,15 +36,49 @@ logging.basicConfig(
 log = logging.getLogger("priceport")
 
 
-def load_keywords(explicit: str | None) -> list[str]:
+class Query(NamedTuple):
+    """一個關鍵字，加上它自己的排除詞。"""
+    keyword: str
+    exclude: tuple[str, ...] = ()
+
+
+def is_excluded(title: str, exclude: tuple[str, ...]) -> bool:
+    """標題含有任一排除詞就丟掉。
+
+    存在的理由很實際：搜「AirPods Pro 2」，PChome 回來的前幾十筆幾乎都是
+    保護殼、貼膜、掛繩 —— 它們確實是商品，但不是使用者要比價的那一件，
+    而且因為便宜，會直接霸佔「最低價」排序的最前面。
+
+    用明確的排除詞而不是猜測式的相似度：規則看得懂、可以單元測試，
+    對不上的時候使用者自己改 watchlist.json 就能修，不用動程式。
+    """
+    if not exclude:
+        return False
+    low = title.lower()
+    return any(w.lower() in low for w in exclude)
+
+
+def load_queries(explicit: str | None) -> list[Query]:
     if explicit:
-        return [k.strip() for k in explicit.split(",") if k.strip()]
+        return [Query(k.strip()) for k in explicit.split(",") if k.strip()]
     if not config.WATCHLIST_FILE.exists():
         log.error("找不到 %s", config.WATCHLIST_FILE)
         return []
     with config.WATCHLIST_FILE.open(encoding="utf-8") as f:
         wl = json.load(f)
-    return [w["keyword"] for w in wl.get("items", []) if w.get("keyword")]
+
+    # 大部分商品都想擋掉同一批配件詞，逐筆重寫太囉嗦，因此支援共用清單。
+    common = tuple(wl.get("exclude_common") or ())
+    out: list[Query] = []
+    for w in wl.get("items", []):
+        kw = (w.get("keyword") or "").strip()
+        if not kw:
+            continue
+        # 明確寫 "exclude": [] 代表「這一筆不要套共用清單」
+        own = w.get("exclude")
+        ex = tuple(own) if own is not None else common
+        out.append(Query(kw, ex))
+    return out
 
 
 async def probe(platform: str, keyword: str) -> int:
@@ -62,24 +97,28 @@ async def probe(platform: str, keyword: str) -> int:
     return 0 if offers else 1
 
 
-async def collect(platform: str, keywords: list[str], limit: int) -> int:
+async def collect(platform: str, queries: list[Query], limit: int) -> int:
     src = REGISTRY[platform]
     today = config.day_index(date.today())
     catalog = storage.Catalog()
 
-    ok = fail = written = 0
+    ok = fail = written = dropped = 0
 
     async with RateLimitedClient() as client:
-        async def one(kw: str) -> None:
-            nonlocal ok, fail, written
+        async def one(q: Query) -> None:
+            nonlocal ok, fail, written, dropped
             try:
-                offers = await src.search(client, kw, limit=limit)
+                offers = await src.search(client, q.keyword, limit=limit)
             except Exception as e:
                 fail += 1
-                log.warning("關鍵字失敗「%s」— %s", kw, e)
+                log.warning("關鍵字失敗「%s」— %s", q.keyword, e)
                 return
             ok += 1
+            kept = 0
             for o in offers:
+                if is_excluded(o.title, q.exclude):
+                    dropped += 1
+                    continue
                 fp, meta = fingerprint(o.title)
                 catalog.upsert(fp, meta, {
                     "platform": o.platform, "title": o.title,
@@ -88,10 +127,14 @@ async def collect(platform: str, keywords: list[str], limit: int) -> int:
                 })
                 storage.append_point(fp, o.platform, o.price, today)
                 written += 1
-            log.info("「%s」→ %d 筆", kw, len(offers))
+                kept += 1
+            log.info("「%s」→ %d 筆（排除 %d）", q.keyword, kept, len(offers) - kept)
 
         # Semaphore 在 client 內部把關，這裡放心全部排入
-        await asyncio.gather(*(one(k) for k in keywords))
+        await asyncio.gather(*(one(q) for q in queries))
+
+    if dropped:
+        log.info("排除詞共濾掉 %d 筆配件／週邊", dropped)
 
     total = ok + fail
     log.info("採集完成：成功 %d / 失敗 %d，寫入 %d 筆報價", ok, fail, written)
@@ -127,7 +170,7 @@ def main() -> int:
     if args.probe:
         return asyncio.run(probe(args.platform, args.probe))
 
-    kws = load_keywords(args.keywords)
+    kws = load_queries(args.keywords)
     if not kws:
         log.error("沒有任何關鍵字")
         return 1
