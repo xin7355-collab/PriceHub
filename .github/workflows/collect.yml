@@ -52,6 +52,7 @@ jobs:
         run: |
           python tests/test_normalize.py
           python tests/test_browser.py
+          python tests/test_storage.py
 
       - name: 準備 data 分支工作區
         # data 分支不存在時自動建立孤兒分支 —— 全新的 repo 第一次跑
