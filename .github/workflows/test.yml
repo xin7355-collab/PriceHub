@@ -34,6 +34,11 @@ jobs:
           python tests/test_storage.py
           python tests/test_watchlist.py
 
+      - name: 即時搜尋代理的離線測試
+        # 解析層壞掉不會拋錯，只會回 0 筆 —— 沒有測試就只能等使用者回報。
+        # node 在 ubuntu runner 上本來就有，不需要 setup-node。
+        run: node edge/test_worker.mjs
+
       - name: 示範資料可產生且格式正確
         # 這步同時驗證 storage 分片、時序寫入與 index 產出，
         # 是不碰網路就能做到的最完整端對端檢查。

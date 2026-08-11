@@ -70,6 +70,22 @@ tools/seed_demo.py  離線示範資料
 
 開啟之後就完全自動：每次採集完 workflow 會重推 `gh-pages`，網站跟著更新。
 
+## 即時搜尋（選用）
+
+排程採集只跑 `watchlist.json` 上的商品，所以搜尋框預設只在已採集的商品裡找。
+想做到「輸入任何關鍵字都能當場查各平台」，部署 `edge/` 那支 Cloudflare Worker：
+
+```bash
+cd edge && wrangler deploy
+# 把印出來的網址填進 web/config.json 的 searchApi
+```
+
+沒部署也完全不影響 —— `searchApi` 是 `null` 時前端根本不會去打它。
+細節見 [`edge/README.md`](edge/README.md)。
+
+**為什麼非得有一層代理**：GitHub Pages 是純靜態的，而各平台的搜尋端點都沒有
+送 CORS 標頭，瀏覽器直接打會被同源政策擋掉，連錯誤訊息都讀不到。
+
 ## 資料格式
 
 **catalog**（`data/catalog/{2碼}.json`）— 商品主檔，各平台最新報價：

@@ -1,0 +1,9 @@
+name = "priceport-search"
+main = "worker.js"
+compatibility_date = "2026-01-01"
+
+# 免費方案每天 100,000 次請求。Worker 內建 5 分鐘邊緣快取，
+# 熱門關鍵字不會每次都真的去打平台，正常使用遠遠用不完。
+
+[observability]
+enabled = true

@@ -128,6 +128,28 @@ h1{
 .spark svg{flex:1;height:34px;overflow:visible}
 .spark .lbl{font-family:var(--mono);font-size:9px;color:var(--amber-dim);letter-spacing:.1em;white-space:nowrap}
 
+/* ── 即時查詢 ────────────────────────────── */
+.livesearch{margin:26px 0 8px;border-top:2px solid var(--ink);padding-top:14px}
+.live-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;flex-wrap:wrap}
+.live-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;font-weight:600;
+  background:var(--ink);color:var(--paper);padding:3px 7px;border-radius:2px;
+}
+.live-msg{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.live-row{
+  display:flex;align-items:center;gap:11px;padding:9px 10px;
+  border:1px solid var(--rule);border-radius:3px;margin-bottom:7px;
+  background:var(--card);text-decoration:none;color:inherit;
+}
+.live-row:hover{border-color:var(--ink)}
+.live-row:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.thumb.sm{flex:0 0 40px;width:40px;height:40px}
+.live-title{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
+.live-price{
+  font-family:var(--mono);font-weight:600;font-size:15px;white-space:nowrap;text-align:right;
+}
+.live-price small{display:block;font-size:9px;font-weight:400;color:var(--muted);letter-spacing:.08em}
+
 /* ── 狀態 ────────────────────────────────── */
 .note{
   background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--ink);
@@ -187,6 +209,11 @@ const DATA_CANDIDATES = (() => {
 })();
 let DATA = DATA_CANDIDATES[0];
 const PLAT = {pchome:'PChome', momo:'momo', shopee:'蝦皮', yahoo:'Yahoo', coupang:'酷澎', taobao:'淘寶'};
+/* 即時搜尋代理。網址參數 ?api= 優先，其次 config.json，都沒有就停用 ——
+   停用時整個即時搜尋的路徑完全不會被走到，網站行為與加這功能之前一模一樣。 */
+let SEARCH_API = new URLSearchParams(location.search).get('api') || null;
+let EXCLUDE = [];
+let liveSeq = 0;                     // 丟棄慢回來的舊查詢，否則結果會互相蓋掉
 const EPOCH = Date.UTC(2020,0,1);
 let ITEMS = [], SERIES = new Map();
 
@@ -237,6 +264,15 @@ async function boot(){
     return;
   }
 
+  // 設定檔讀不到、格式壞掉、或沒填 —— 都只是「即時搜尋停用」，不該讓網站掛掉
+  try {
+    const cfg = await (await fetch('config.json', {cache:'no-store'})).json();
+    if (!SEARCH_API && typeof cfg.searchApi === 'string' && cfg.searchApi.trim()) {
+      SEARCH_API = cfg.searchApi.trim().replace(/\/+$/, '');
+    }
+  } catch { /* 沒有設定檔就是沒有，不影響已採集商品的搜尋 */ }
+  EXCLUDE = Array.isArray(idx.exclude_common) ? idx.exclude_common : [];
+
   const shards = await Promise.all(
     idx.shards.map(s => fetch(`${DATA}/catalog/${s}.json`).then(r=>r.json()).catch(()=>({})))
   );
@@ -277,12 +313,63 @@ function render(q){
     (k ? `${hits.length} 件符合「${q.trim()}」` : `${hits.length} 件商品`) +
     `，依${SORTS[SORT].label}排序`;
 
-  if (!hits.length){
+  if (!hits.length && !SEARCH_API){
     out.append(el(`<div class="note"><h2>沒有符合的商品</h2>
-      <p>換個關鍵字，或把商品加進 <code>watchlist.json</code> 後重跑採集。</p></div>`));
+      <p>換個關鍵字，或把商品加進 <code>watchlist.json</code> 後重跑採集。</p>
+      <p style="margin-top:10px">想讓任何關鍵字都能即時查各平台，
+      部署 <code>edge/</code> 那支代理並填進 <code>web/config.json</code>。</p></div>`));
     return;
   }
   hits.slice(0,60).forEach((x,i) => out.append(card(x,i)));
+  if (SEARCH_API && k.length >= 2) liveSearch(q.trim());
+}
+
+/* ── 即時搜尋 ─────────────────────────────────
+   已採集的商品只有 watchlist 上那些。使用者打的關鍵字多半不在其中，
+   這時就現場去問代理。結果放在已採集商品後面，並明確標示是即時查的
+   —— 它沒有歷史價格曲線，跟排程採集的資料不是同一種東西。 */
+async function liveSearch(q){
+  const out = document.getElementById('out');
+  const seq = ++liveSeq;
+  const box = el(`<section class="livesearch"><div class="live-head">
+    <span class="live-tag">即時查詢</span><span class="live-msg">查詢各平台中…</span></div></section>`);
+  out.append(box);
+
+  let data;
+  try {
+    const u = new URL(SEARCH_API + '/search');
+    u.searchParams.set('q', q);
+    u.searchParams.set('limit', '20');
+    if (EXCLUDE.length) u.searchParams.set('exclude', EXCLUDE.join(','));
+    const r = await fetch(u, {cache:'no-store'});
+    data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  } catch (e) {
+    if (seq !== liveSeq) return;                 // 使用者已經改字了，這個結果過期了
+    box.querySelector('.live-msg').textContent = `即時查詢失敗：${e.message}`;
+    return;
+  }
+  if (seq !== liveSeq) { box.remove(); return; }
+
+  const offers = (data.offers || []);
+  if (!offers.length){
+    box.querySelector('.live-msg').textContent = '各平台都沒有找到這個商品';
+    return;
+  }
+  box.querySelector('.live-msg').textContent =
+    `${offers.length} 筆` + (data.errors && data.errors.length
+      ? `（${data.errors.map(e => PLAT[e.platform]||e.platform).join('、')} 查詢失敗）` : '');
+
+  offers.forEach(o => {
+    const a = el(`<a class="live-row" href="${esc(o.url)}" target="_blank" rel="noopener nofollow"></a>`);
+    a.append(el(o.image
+      ? `<figure class="thumb sm"><img src="${esc(o.image)}" alt="" loading="lazy"
+           referrerpolicy="no-referrer" onerror="this.closest('figure').classList.add('none');this.remove()"></figure>`
+      : `<figure class="thumb sm none" aria-hidden="true"></figure>`));
+    a.append(el(`<span class="live-title">${esc(o.title)}</span>`));
+    a.append(el(`<span class="live-price">$${money(o.price)}<small>${PLAT[o.platform]||o.platform}</small></span>`));
+    box.append(a);
+  });
 }
 
 /* 縮圖：採集時每一筆報價都存了 image，挑第一個有圖的通路來用。

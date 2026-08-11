@@ -1,0 +1,4 @@
+{
+  "_note": "searchApi 填入 edge/ 那支 Cloudflare Worker 的網址，就會啟用『輸入任何關鍵字即時查各平台』。留成 null 時前端完全不會去打它，只搜尋已採集的商品。部署方式見 edge/README.md。",
+  "searchApi": null
+}
