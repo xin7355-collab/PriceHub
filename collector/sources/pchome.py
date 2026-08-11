@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING
 
-from .base import Offer, register
+from .base import Offer, register, to_int_price
 
 if TYPE_CHECKING:                      # 解析層不得在執行期依賴網路層，
     from ..httpclient import RateLimitedClient   # 否則單元測試會被 aiohttp 綁架
@@ -29,27 +29,12 @@ def _pick(d: dict, *keys):
     return None
 
 
-def _to_int_price(v) -> int | None:
-    if isinstance(v, bool):
-        return None
-    if isinstance(v, (int, float)):
-        return int(v) if v > 0 else None
-    if isinstance(v, str):
-        s = v.replace(",", "").replace("$", "").strip()
-        try:
-            n = int(float(s))
-            return n if n > 0 else None
-        except ValueError:
-            return None
-    return None
-
-
 def parse_item(item: dict) -> Offer | None:
     if not isinstance(item, dict):
         return None
     pid = _pick(item, "Id", "id", "prodId")
     name = _pick(item, "name", "Name", "prodName")
-    price = _to_int_price(_pick(item, "price", "Price", "salePrice"))
+    price = to_int_price(_pick(item, "price", "Price", "salePrice"))
     if not (pid and name and price):
         return None
 
@@ -63,7 +48,7 @@ def parse_item(item: dict) -> Offer | None:
         url=PROD_URL.format(pid=pid),
         image=image,
         raw_id=str(pid),
-        extra={"origin_price": _to_int_price(_pick(item, "originPrice", "OriginPrice"))},
+        extra={"origin_price": to_int_price(_pick(item, "originPrice", "OriginPrice"))},
     )
 
 

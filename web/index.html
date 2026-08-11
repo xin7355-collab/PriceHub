@@ -152,7 +152,16 @@ footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--rule);
 </div>
 
 <script>
-const DATA = new URLSearchParams(location.search).get('data') || '../data';
+/* 資料目錄位置隨部署方式而不同：
+     本機 python -m http.server → 前端在 /web/，資料在 /data/   → ../data
+     gh-pages（workflow 把 web/* 攤平到站台根目錄）             → ./data
+   兩者都試，第一個讀得到 index.json 的就是它。寫死其中一個會讓
+   另一種部署方式靜默變成空白頁。 */
+const DATA_CANDIDATES = (() => {
+  const forced = new URLSearchParams(location.search).get('data');
+  return forced ? [forced] : ['./data', '../data'];
+})();
+let DATA = DATA_CANDIDATES[0];
 const PLAT = {pchome:'PChome', momo:'momo', shopee:'蝦皮', yahoo:'Yahoo', coupang:'酷澎', taobao:'淘寶'};
 const EPOCH = Date.UTC(2020,0,1);
 let ITEMS = [], SERIES = new Map();
@@ -160,10 +169,24 @@ let ITEMS = [], SERIES = new Map();
 const el = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstElementChild; };
 const money = (n) => n.toLocaleString('en-US');
 
+async function loadIndex(){
+  let lastErr;
+  for (const base of DATA_CANDIDATES){
+    try {
+      const r = await fetch(`${base}/index.json`, {cache:'no-store'});
+      if (!r.ok) { lastErr = new Error(`${base} → HTTP ${r.status}`); continue; }
+      const idx = await r.json();
+      DATA = base;                       // 後續 catalog / series 都跟著這個根走
+      return idx;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('no data root');
+}
+
 async function boot(){
   let idx;
   try {
-    idx = await (await fetch(`${DATA}/index.json`,{cache:'no-store'})).json();
+    idx = await loadIndex();
   } catch (e) {
     document.getElementById('strap').innerHTML = '<span class="pill demo">無資料</span>';
     document.getElementById('out').append(el(`

@@ -35,15 +35,9 @@ jobs:
         platform: [pchome]     # 接通新平台後往這裡加，程式碼不用改
 
     steps:
+      # 主 checkout 拿的是程式碼。資料放在另一個 worktree，
+      # 兩者分開才能各自 commit 到各自的分支。
       - uses: actions/checkout@v4
-        with:
-          ref: data
-          fetch-depth: 1
-
-      - name: 取回採集程式
-        run: |
-          git fetch --depth=1 origin main
-          git checkout origin/main -- collector tools watchlist.json requirements.txt
 
       - uses: actions/setup-python@v5
         with:
@@ -53,48 +47,94 @@ jobs:
       - run: pip install -r requirements.txt
 
       - name: 離線測試
-        run: python tests/test_normalize.py || true
+        # 比對層壞掉會靜默產生錯誤的指紋，那比採集失敗更難發現。
+        # 這裡刻意不加 `|| true`：測試紅了就不該讓它去寫資料。
+        run: |
+          python tests/test_normalize.py
+          python tests/test_browser.py
+
+      - name: 準備 data 分支工作區
+        # data 分支不存在時自動建立孤兒分支 —— 全新的 repo 第一次跑
+        # 就能成功，不需要任何手動 bootstrap。
+        run: |
+          set -euo pipefail
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth=1 origin data:refs/remotes/origin/data
+            git worktree add -B data databr origin/data
+          else
+            echo "data 分支尚未存在，建立孤兒分支"
+            git worktree add --detach databr HEAD
+            git -C databr checkout --orphan data
+            git -C databr rm -rf --quiet . >/dev/null 2>&1 || true
+          fi
+          mkdir -p databr/data
 
       - name: 採集 ${{ matrix.platform }}
         id: collect
+        env:
+          # config.py 讀這個環境變數，因此程式完全不需要知道
+          # 自己正在寫進另一個分支的 worktree。
+          PRICEPORT_DATA: ${{ github.workspace }}/databr/data
         run: |
           python -m collector.run \
             --platform ${{ matrix.platform }} \
             ${{ github.event.inputs.keywords && format('--keywords "{0}"', github.event.inputs.keywords) || '' }}
 
       - name: 寫回 data 分支
-        if: steps.collect.outcome == 'success'
+        working-directory: databr
         run: |
           git config user.name  "priceport-bot"
           git config user.email "priceport-bot@users.noreply.github.com"
-          git checkout -- collector tools watchlist.json requirements.txt 2>/dev/null || true
-          git rm -r --cached collector tools watchlist.json requirements.txt -q 2>/dev/null || true
-          git add data
+          git add -A data
           if git diff --cached --quiet; then
             echo "價格無變動，跳過 commit"
             exit 0
           fi
-          git commit -m "chore(${{ matrix.platform }}): 價格更新 $(date -u +%Y-%m-%dT%H:%MZ)"
-          # 併發推送競爭：先 rebase 再推，最多重試三次
+          git commit -q -m "chore(${{ matrix.platform }}): 價格更新 $(date -u +%Y-%m-%dT%H:%MZ)"
+          # 併發推送競爭：先推，被拒再 rebase 重試，最多三次
           for i in 1 2 3; do
-            git pull --rebase --autostash origin data && git push origin HEAD:data && exit 0
-            echo "推送衝突，第 $i 次重試"; sleep $((i * 5))
+            git push origin HEAD:data && exit 0
+            echo "推送衝突，第 $i 次重試"
+            git pull --rebase --autostash origin data || true
+            sleep $((i * 5))
           done
           exit 1
 
   publish:
     needs: collect
+    # 採集失敗也要部署 —— 舊資料的站台比 404 有用。
     if: always()
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
-        with: { ref: main }
+
       - name: 組合前端 + 資料
         run: |
+          set -euo pipefail
           mkdir -p _site
           cp -r web/* _site/
-          git fetch --depth=1 origin data
-          git checkout origin/data -- data
-          cp -r data _site/data
+          if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
+            git fetch --depth=1 origin data:refs/remotes/origin/data
+            git worktree add databr origin/data
+            cp -r databr/data _site/data
+          else
+            echo "尚無 data 分支，只部署前端骨架"
+          fi
+
+      - uses: actions/configure-pages@v5
+        with:
+          # 第一次跑會順手把 Pages 打開，省掉一步手動設定
+          enablement: true
+
       - uses: actions/upload-pages-artifact@v3
         with: { path: _site }
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

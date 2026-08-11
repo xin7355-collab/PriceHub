@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<!--
+  合成的 momo 式搜尋結果頁，只為了驗證 profile → 抽取 → Offer 這條管線。
+  這不是 momo 真實頁面的複製，也不該被當成 DOM 的參考來源；
+  真實選擇器請用 `python -m collector.browse --platform momo --dump` 取得。
+
+  刻意放進四種會踩到的狀況：
+    1. 正常商品（相對網址、價格帶逗號）
+    2. 價格夾雜文字（"特價$12,900起"）
+    3. 缺價格的置入式廣告列 —— 必須被丟掉
+    4. 缺連結的列 —— 必須被丟掉
+-->
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>搜尋結果</title></head>
+<body>
+<ul class="goodsUrl">
+  <li class="goodsItemLi">
+    <a class="goods-img-url" href="/goods/GoodsDetail.jsp?i_code=11111111">
+      <img class="prdImg" src="//img1.momoshop.com.tw/goodsimg/0011/111/111.jpg" alt="">
+    </a>
+    <h3 class="prdName">【SONY 索尼】WH-1000XM5 無線藍牙降噪耳機 黑色</h3>
+    <p class="money"><span class="price"><b>12,900</b></span></p>
+  </li>
+
+  <li class="goodsItemLi">
+    <a class="goods-img-url" href="/goods/GoodsDetail.jsp?i_code=22222222">
+      <img class="prdImg" src="//img1.momoshop.com.tw/goodsimg/0022/222/222.jpg" alt="">
+    </a>
+    <h3 class="prdName">【Logitech 羅技】MX Master 3S 無線靜音滑鼠 石墨灰</h3>
+    <p class="money"><span class="price"><b>特價$3,190起</b></span></p>
+  </li>
+
+  <li class="goodsItemLi">
+    <a class="goods-img-url" href="/goods/GoodsDetail.jsp?i_code=33333333">
+      <img class="prdImg" src="//img1.momoshop.com.tw/goodsimg/0033/333/333.jpg" alt="">
+    </a>
+    <h3 class="prdName">廣告版位 沒有價格的置入</h3>
+  </li>
+
+  <li class="goodsItemLi">
+    <h3 class="prdName">缺連結的商品</h3>
+    <p class="money"><span class="price"><b>999</b></span></p>
+  </li>
+</ul>
+</body>
+</html>
