@@ -174,6 +174,38 @@ def test_single_platform_is_never_suspect():
         assert "suspect" not in _cat_with(st, [("pchome", 100)])
 
 
+def test_fingerprint_version_bump_wipes_old_data():
+    """指紋規則一改，所有商品的鍵就全變了。舊項目不會再被任何一次採集碰到，
+    卻仍留在 catalog 裡 —— 網站會永遠顯示一批不再更新的舊價格，看不出來。
+    寧可少一天歷史，也不要留一批假的現價。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        st.append_point("abc123456789", "pchome", 100, 2400)
+        st.write_index({"fp_version": 1, "products": 1})
+
+        import collector.run as run
+        run.storage = st
+        run.config = st.config
+
+        st.config.FP_VERSION = 1
+        assert run.reset_if_fingerprint_changed() is False, "版本相同不該清"
+        assert (st.config.SERIES_DIR).exists()
+
+        st.config.FP_VERSION = 2
+        assert run.reset_if_fingerprint_changed() is True, "版本不同要清"
+        assert not st.config.SERIES_DIR.exists()
+        assert not st.config.CATALOG_DIR.exists()
+
+
+def test_no_index_means_first_run_not_a_version_change():
+    """全新的 repo 沒有 index.json，不該被當成改版而白清一次。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        import collector.run as run
+        run.storage = st; run.config = st.config
+        assert run.reset_if_fingerprint_changed() is False
+
+
 def test_atomic_write_leaves_no_temp_files():
     """job 被砍不該留下半個 JSON，也不該留下 .tmp 殘骸。"""
     with tempfile.TemporaryDirectory() as td:

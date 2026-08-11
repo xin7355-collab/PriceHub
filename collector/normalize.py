@@ -55,6 +55,36 @@ BRAND_ALIASES = {
     "nintendo": "nintendo", "任天堂": "nintendo",
     "garmin": "garmin",
     "jbl": "jbl",
+    # 品牌認不出來就沒有品牌可比，同型號的不同廠牌會被誤併，
+    # 或反過來整筆掉進 weak。以下都是採集清單裡實際出現過的。
+    "crucial": "crucial", "美光": "crucial", "micron": "crucial",
+    "adata": "adata", "威剛": "adata",
+    "transcend": "transcend", "創見": "transcend",
+    "sandisk": "sandisk", "閃迪": "sandisk",
+    "corsair": "corsair", "海盜船": "corsair",
+    "gigabyte": "gigabyte", "技嘉": "gigabyte",
+    "asrock": "asrock", "華擎": "asrock",
+    "benq": "benq", "明基": "benq",
+    "viewsonic": "viewsonic", "優派": "viewsonic",
+    "aoc": "aoc",
+    "lg": "lg", "樂金": "lg",
+    "sharp": "sharp", "夏普": "sharp",
+    "daikin": "daikin", "大金": "daikin",
+    "hitachi": "hitachi", "日立": "hitachi",
+    "zojirushi": "zojirushi", "象印": "zojirushi",
+    "tiger": "tiger", "虎牌": "tiger",
+    "tefal": "tefal", "特福": "tefal",
+    "tplink": "tplink", "tp-link": "tplink",
+    "logitech g": "logitech",
+    "marshall": "marshall",
+    "hyperx": "hyperx",
+    "amd": "amd", "超微": "amd",
+    "intel": "intel", "英特爾": "intel",
+    "nvidia": "nvidia", "輝達": "nvidia",
+    "google": "google", "谷歌": "google",
+    "oppo": "oppo", "vivo": "vivo", "realme": "realme",
+    "nothing": "nothing",
+    "sony": "sony",
 }
 # 依長度排序，避免 "wd" 先吃掉 "western digital"
 _BRAND_KEYS = sorted(BRAND_ALIASES, key=len, reverse=True)
@@ -130,6 +160,42 @@ def extract_color(title: str) -> str | None:
     return None
 
 
+# ---------------------------------------------------------------- 規格
+# 容量與數量。這些不同就是不同商品：DDR5 16GB 與 32GB 不能合併，
+# 兩入裝與單入也不能。顏色可以合併，容量不行 —— 差別在於它影響價格。
+CAPACITY_RE = re.compile(r"(?<![a-z0-9])(\d+(?:\.\d+)?)\s*(tb|gb|mb|t|g)(?![a-z0-9])",
+                         re.IGNORECASE)
+COUNT_RE = re.compile(r"(\d+)\s*(入|件|包|組|支|雙|對|盒)")
+_CAP_UNIT = {"t": "tb", "g": "gb"}
+
+
+def extract_specs(title: str) -> str:
+    """抽出容量／數量，正規化後排序串接，當作指紋的一部分。
+
+    排序是刻意的：兩個平台把規格寫在標題不同位置（"DDR5 32GB 5600" 與
+    "5600 32GB DDR5"），集合相同就該得到相同的鍵。
+    """
+    t = _fullwidth_to_half(title).lower()
+    out: set[str] = set()
+    for num, unit in CAPACITY_RE.findall(t):
+        unit = _CAP_UNIT.get(unit, unit)
+        out.add(f"{float(num):g}{unit}")
+    for num, unit in COUNT_RE.findall(t):
+        out.add(f"{int(num)}{unit}")
+    return "+".join(sorted(out))
+
+
+# 型號夠不夠獨特，決定它能不能單獨當合併依據。
+# 5 是實測出來的：DDR5（4 碼）是規格標準不是型號，放行會把 Kingston 與
+# Crucial 的記憶體併成同一件；WH-1000XM5（10 碼）則確實只指一款商品。
+MODEL_DISTINCTIVE_MIN = 5
+
+
+def is_distinctive_model(model: str | None) -> bool:
+    return bool(model) and len(model) >= MODEL_DISTINCTIVE_MIN \
+        and any(c.isalpha() for c in model) and any(c.isdigit() for c in model)
+
+
 def tokens(title: str) -> set[str]:
     """粗分詞：英數以空白切，中文以 2-gram 切。無需外部斷詞套件。"""
     t = clean_title(title).lower()
@@ -186,17 +252,24 @@ def fingerprint(title: str) -> tuple[str, dict]:
     model = extract_model(cleaned) or extract_model(_fullwidth_to_half(title))
     color = extract_color(cleaned) or extract_color(_fullwidth_to_half(title))
 
-    if brand and model:
-        key = f"{brand}|{model}|{color or ''}"
-        level = "strong" if color else "medium"
-    elif model:
-        key = f"?|{model}|{color or ''}"
+    specs = extract_specs(title)
+
+    if is_distinctive_model(model):
+        # 型號本身已經只指一款商品，品牌可有可無 —— 這一條是關鍵：
+        # PChome 常把品牌放在獨立欄位而不寫進標題（"WH-1000XM5 黑色 …"），
+        # 硬要求品牌一致，同一件商品就會在兩個平台各自成為一張卡片。
+        key = f"m|{model}|{specs}"
+        level = "strong" if brand else "medium"
+    elif brand and model:
+        # 型號不夠獨特（DDR5 這種規格標準），必須靠品牌區分
+        key = f"{brand}|{model}|{specs}"
         level = "medium"
     elif brand:
         # 有品牌但抓不到型號（AirPods Pro、Dyson Airwrap 這類純字母命名）。
         # 只取英數詞並剔除品牌本身 —— 中文描述在各平台差異太大，
         # 納入反而會把同一件商品拆成好幾個指紋。
-        key = f"{brand}|~|" + " ".join(sorted(latin_content_tokens(cleaned, brand)))
+        key = f"{brand}|~|" + " ".join(sorted(latin_content_tokens(cleaned, brand))) \
+            + f"|{specs}"
         level = "loose"
     else:
         key = "t|" + " ".join(sorted(tokens(cleaned)))

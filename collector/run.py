@@ -17,6 +17,7 @@ import argparse
 import asyncio
 import json
 import logging
+import shutil
 import sys
 from datetime import date
 from typing import NamedTuple
@@ -105,9 +106,29 @@ async def probe(platform: str, keyword: str) -> int:
     return 0 if offers else 1
 
 
+def reset_if_fingerprint_changed() -> bool:
+    """指紋規則改版時清空舊資料。
+
+    不清的話，舊鍵的商品不會再被任何一次採集碰到，卻仍留在 catalog 裡，
+    網站就會永遠顯示一批不再更新的舊價格 —— 而且完全看不出來。
+    寧可少一天歷史，也不要留一批假的現價。
+    """
+    idx = storage.read_index()
+    old = idx.get("fp_version")
+    if not idx or old == config.FP_VERSION:
+        return False
+
+    log.warning("指紋版本 %s → %s，清空既有資料重建", old, config.FP_VERSION)
+    for d in (config.CATALOG_DIR, config.SERIES_DIR):
+        if d.exists():
+            shutil.rmtree(d)
+    return True
+
+
 async def collect(platform: str, queries: list[Query], limit: int) -> int:
     src = REGISTRY[platform]
     today = config.day_index(date.today())
+    reset_if_fingerprint_changed()
     catalog = storage.Catalog()
 
     ok = fail = written = dropped = 0
@@ -164,6 +185,7 @@ async def collect(platform: str, queries: list[Query], limit: int) -> int:
     # 前端即時查詢時要套用同一套排除詞，否則畫面上半部濾掉了配件、
     # 下半部的即時結果又全是保護殼。放進 index.json 讓兩邊共用一份來源。
     stats["exclude_common"] = list(load_exclude_common())
+    stats["fp_version"] = config.FP_VERSION
     storage.write_index(stats)
     log.info("索引已更新：%d 件商品 / %d 個分片",
              stats["products"], len(stats["shards"]))
