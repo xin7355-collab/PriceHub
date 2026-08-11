@@ -117,6 +117,22 @@ def test_platforms_are_independent():
         assert _points(st, platform="momo") == [[2400, 900]]
 
 
+def test_index_counts_only_platforms_with_offers():
+    """回歸：通路數原本取自 REGISTRY / 一份靜態表，會把「已註冊但還沒接通」
+    的平台也算進去，網站於是顯示「2 個通路」而其實只有一個有資料。"""
+    with tempfile.TemporaryDirectory() as td:
+        st = _fresh_storage(Path(td))
+        cat = st.Catalog()
+        meta = {"clean": "測試商品", "brand": None, "model": None,
+                "color": None, "level": "weak"}
+        cat.upsert("abc123456789", meta, {
+            "platform": "pchome", "title": "測試商品", "price": 100,
+            "url": "https://example.invalid/1", "image": None, "day": 2400})
+        stats = cat.finalize()
+        assert stats["platforms"] == ["pchome"], stats["platforms"]
+        assert stats["products"] == 1
+
+
 def test_atomic_write_leaves_no_temp_files():
     """job 被砍不該留下半個 JSON，也不該留下 .tmp 殘骸。"""
     with tempfile.TemporaryDirectory() as td:

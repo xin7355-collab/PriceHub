@@ -117,12 +117,7 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     permissions:
-      contents: read
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -131,21 +126,35 @@ jobs:
           set -euo pipefail
           mkdir -p _site
           cp -r web/* _site/
+          # 沒有這個檔，Jekyll 會把底線開頭的路徑吃掉，而且多一層建置延遲
+          touch _site/.nojekyll
           if git ls-remote --exit-code --heads origin data >/dev/null 2>&1; then
             git fetch --depth=1 origin data:refs/remotes/origin/data
             git worktree add databr origin/data
             cp -r databr/data _site/data
+            echo "已併入 data 分支的價格資料"
           else
             echo "尚無 data 分支，只部署前端骨架"
           fi
 
-      - uses: actions/configure-pages@v5
-        with:
-          # 第一次跑會順手把 Pages 打開，省掉一步手動設定
-          enablement: true
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: _site }
-
-      - id: deploy
-        uses: actions/deploy-pages@v4
+      # 走 gh-pages 分支而不是 actions/deploy-pages。
+      # deploy-pages 需要先有 Pages 站台，而建立站台要 administration 權限 ——
+      # GITHUB_TOKEN 根本沒有這個 scope（可用的只有 contents / pages / id-token 等），
+      # 所以 configure-pages 的 enablement 一定會回 "Resource not accessible by
+      # integration"。推分支只需要 contents: write，這個權限確定拿得到。
+      # 這也回到 README 原本就寫好的三分支架構：部署產物與原始碼分離。
+      - name: 發佈到 gh-pages 分支
+        run: |
+          set -euo pipefail
+          cd _site
+          git init -q -b gh-pages
+          git config user.name  "priceport-bot"
+          git config user.email "priceport-bot@users.noreply.github.com"
+          git add -A
+          git commit -q -m "deploy: $(date -u +%Y-%m-%dT%H:%MZ)"
+          # 每次都推一個全新的單一 commit。部署產物不需要歷史，
+          # 留著只會讓 repo 一直長大。
+          git push -f -q \
+            "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" \
+            gh-pages
+          echo "已發佈 $(find . -type f -not -path './.git/*' | wc -l) 個檔案到 gh-pages"
