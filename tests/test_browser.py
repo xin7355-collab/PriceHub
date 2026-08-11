@@ -16,12 +16,31 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from collector.sources.base import to_int_price          # noqa: E402
 from collector.sources.browser import (                  # noqa: E402
-    PROFILE_DIR, load_profile, load_profiles, rows_to_offers,
-    search_url_for,
+    load_profiles, rows_to_offers, search_url_for,
 )
 
 FIXTURE = Path(__file__).resolve().parent / "fixtures" / "momo_like.html"
-MOMO = load_profile(PROFILE_DIR / "momo.json")
+
+# 目前沒有任何 profile 隨程式碼出貨 —— momo 已改走 sources/momo.py 的
+# ld+json，比 CSS 選擇器穩定得多。但瀏覽器採集的機制要留著：Yahoo 與蝦皮
+# 實測都是純 JS 渲染（0 商品連結、0 結構化資料），將來要接只剩這條路。
+# 因此測試自帶一份 profile，不依賴 collector/profiles/ 裡有沒有檔案。
+MOMO = {
+    "platform": "momo",
+    "label": "測試用 profile",
+    "search_url": "https://www.momoshop.com.tw/search/searchShop.jsp?keyword={keyword}",
+    "schema": {
+        "baseSelector": "li.goodsItemLi",
+        "fields": [
+            {"name": "title", "selector": "h3.prdName", "type": "text"},
+            {"name": "price", "selector": "span.price b", "type": "text"},
+            {"name": "url", "selector": "a.goods-img-url",
+             "type": "attribute", "attribute": "href"},
+            {"name": "image", "selector": "img.prdImg",
+             "type": "attribute", "attribute": "src"},
+        ],
+    },
+}
 
 
 # ---------------------------------------------------------------- 價格
@@ -40,10 +59,10 @@ def test_price_parsing():
 
 # ---------------------------------------------------------------- profile
 def test_every_profile_is_wellformed():
-    """profile 壞掉會在採集時才炸，成本高，這裡先擋下來。"""
-    profiles = load_profiles()
-    assert profiles, "至少要有一個 profile"
-    for p in profiles:
+    """profile 壞掉會在採集時才炸，成本高，這裡先擋下來。
+    目前沒有 profile 出貨，所以這個測試多半是空跑 —— 但只要有人放了一個
+    進去，它就會馬上被檢查。"""
+    for p in load_profiles() + [MOMO]:
         assert "{keyword}" in p["search_url"], f"{p['platform']} 的 search_url 沒有 {{keyword}}"
         assert p["schema"]["baseSelector"], p["platform"]
         names = {f["name"] for f in p["schema"]["fields"]}

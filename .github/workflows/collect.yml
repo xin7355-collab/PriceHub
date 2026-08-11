@@ -42,7 +42,7 @@ jobs:
       fail-fast: false
       max-parallel: 1          # 序列執行，避免多個 job 同時 push 撞車
       matrix:
-        platform: [pchome]     # 接通新平台後往這裡加，程式碼不用改
+        platform: [pchome, momo]   # 接通新平台後往這裡加，程式碼不用改
 
     steps:
       # 主 checkout 拿的是程式碼。資料放在另一個 worktree，
@@ -64,6 +64,7 @@ jobs:
           python tests/test_browser.py
           python tests/test_storage.py
           python tests/test_watchlist.py
+          python tests/test_momo.py
 
       - name: 準備 data 分支工作區
         # data 分支不存在時自動建立孤兒分支 —— 全新的 repo 第一次跑

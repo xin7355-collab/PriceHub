@@ -9,7 +9,7 @@
  */
 import assert from 'node:assert';
 import worker from './worker.js';
-import { parsePchome, parsePchomeItem, toIntPrice, isExcluded } from './sources.js';
+import { SOURCES, parseMomo, parsePchome, parsePchomeItem, toIntPrice, isExcluded } from './sources.js';
 
 const tests = [];
 const test = (name, fn) => tests.push([name, fn]);
@@ -64,6 +64,57 @@ test('PChome：limit 有效，且解不出來的整筆丟掉', () => {
   assert.equal(parsePchome(data, 1).length, 1);
   assert.equal(parsePchome({}, 20).length, 0);
   assert.equal(parsePchome(null, 20).length, 0);
+});
+
+/* ------------------------------------------------------------ momo 解析 */
+// 結構照 tools/probe_platforms.py --deep momo 實測到的形狀，不是猜的
+const MOMO_HTML = `<html><script type="application/ld+json">
+{"@context":"https://schema.org","@type":"WebPage","@graph":[
+ {"@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","name":"首頁"}]},
+ {"@type":"ItemList","itemListElement":[
+  {"@type":"Product","name":"【SONY 索尼】WH-1000XM5 主動式降噪旗艦藍芽耳機","position":1,
+   "image":"https://img3.momoshop.com.tw/goodsimg/0010/201/974/10201974_OL.jpg",
+   "url":"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=10201974&Area=search&kw=x",
+   "offers":{"@type":"Offer","price":9900,"priceCurrency":"TWD"}},
+  {"@type":"Product","name":"多賣家商品","position":2,
+   "url":"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=222",
+   "offers":[{"price":"3,290"},{"price":3190}]},
+  {"@type":"Product","name":"缺價格","position":3,
+   "url":"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=333","offers":{}},
+  {"@type":"Product","name":"重複的同一件","position":4,
+   "url":"https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=10201974",
+   "offers":{"price":9900}}
+ ]}]}
+</script></html>`;
+
+test('momo：從巢狀 @graph 抽出商品', () => {
+  const offers = parseMomo(MOMO_HTML, 20);
+  assert.equal(offers.length, 2, JSON.stringify(offers.map((o) => o.title)));
+  assert.equal(offers[0].platform, 'momo');
+  assert.equal(offers[0].price, 9900);
+});
+
+test('momo：offers 是陣列時取最低價', () => {
+  assert.equal(parseMomo(MOMO_HTML, 20)[1].price, 3190);
+});
+
+test('momo：追蹤參數要剝掉，否則同商品每次網址都不同', () => {
+  const o = parseMomo(MOMO_HTML, 20)[0];
+  assert.equal(o.url,
+    'https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=10201974');
+  assert.ok(!o.url.includes('Area='));
+});
+
+test('momo：limit 有效', () => {
+  assert.equal(parseMomo(MOMO_HTML, 1).length, 1);
+});
+
+test('momo：壞輸入只能回空陣列，不能爆', () => {
+  for (const bad of ['', '<html></html>', null, undefined,
+                     '<script type="application/ld+json">{壞</script>',
+                     '<script type="application/ld+json">null</script>']) {
+    assert.deepEqual(parseMomo(bad, 20), []);
+  }
 });
 
 /* ------------------------------------------------------------ 排除詞 */
@@ -128,22 +179,44 @@ test('Worker：關鍵字太短回 400', async () => {
     '錯誤回應同樣要有 CORS，否則前端連錯誤訊息都讀不到');
 });
 
+// 平台數會隨著接通新通路而變，斷言不要寫死數字，否則每加一個通路
+// 就得回來改測試 —— 那種測試很快就會被改成「怎樣都會過」。
+const N_PLATFORMS = Object.keys(SOURCES).length;
+
 test('Worker：平台掛掉要隔離，不能整個查詢失敗', async () => {
   const boom = async () => { throw new Error('平台爆炸'); };
   const res = await call('https://w.dev/search?q=測試', boom);
   assert.equal(res.status, 200, '單一平台失敗不該回 5xx');
   const d = await res.json();
   assert.equal(d.count, 0);
-  assert.equal(d.errors.length, 1);
-  assert.match(d.errors[0].error, /平台爆炸/);
+  assert.equal(d.errors.length, N_PLATFORMS, '每個平台各自回報一次失敗');
+  assert.ok(d.errors.every((e) => /平台爆炸/.test(e.error)));
+});
+
+test('Worker：一個平台掛掉，另一個仍要照常回', async () => {
+  if (N_PLATFORMS < 2) return;                 // 只有一個平台時這題不成立
+  // 假 fetch 回的是 PChome 形狀的 JSON，所以要留著 pchome 當倖存者 ——
+  // 弄壞 pchome 而留 momo，momo 拿到 JSON 也解不出東西，就分不清
+  // 「被隔離成功」和「根本沒解出來」。
+  const victim = Object.keys(SOURCES).find((n) => n !== 'pchome');
+  const saved = SOURCES[victim].search;
+  SOURCES[victim].search = async () => { throw new Error('只有我掛'); };
+  try {
+    const d = await (await call('https://w.dev/search?q=測試', fakeFetch(SAMPLE))).json();
+    assert.equal(d.errors.length, 1, '只有壞掉的那個進 errors');
+    assert.equal(d.errors[0].platform, victim);
+    assert.ok(d.count > 0, '倖存平台的結果必須照常回來');
+  } finally {
+    SOURCES[victim].search = saved;
+  }
 });
 
 test('Worker：平台回非 200 也要被當成該平台的錯誤', async () => {
   const res = await call('https://w.dev/search?q=測試',
     fakeFetch({}, { ok: false, status: 403 }));
   const d = await res.json();
-  assert.equal(d.errors.length, 1);
-  assert.match(d.errors[0].error, /403/);
+  assert.equal(d.errors.length, N_PLATFORMS);
+  assert.ok(d.errors.every((e) => /403/.test(e.error)));
 });
 
 test('Worker：OPTIONS 預檢', async () => {

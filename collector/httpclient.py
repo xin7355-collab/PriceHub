@@ -43,8 +43,9 @@ class RateLimitedClient:
         if self._session:
             await self._session.close()
 
-    async def get_json(self, url: str, params: dict | None = None) -> Any:
-        """取回 JSON。全部重試用盡才拋出，讓上層決定要不要算失敗。"""
+    async def _get(self, url: str, params: dict | None, as_json: bool) -> Any:
+        """三道防線共用的取數路徑。JSON 與 HTML 只差最後怎麼讀 body ——
+        限流、退避、禮貌延遲的邏輯不該複製兩份，那種重複遲早會走樣。"""
         assert self._session is not None, "client 必須在 async with 內使用"
         last_err: Exception | None = None
 
@@ -60,7 +61,8 @@ class RateLimitedClient:
                             )
                         resp.raise_for_status()
                         # PChome 回傳 Content-Type 是 text/html，不能信 content_type
-                        data = await resp.json(content_type=None)
+                        data = (await resp.json(content_type=None) if as_json
+                                else await resp.text())
                         await asyncio.sleep(config.POLITE_DELAY)
                         return data
 
@@ -77,3 +79,11 @@ class RateLimitedClient:
                     await asyncio.sleep(delay)
 
         raise RuntimeError(f"重試耗盡: {url}") from last_err
+
+    async def get_json(self, url: str, params: dict | None = None) -> Any:
+        """取回 JSON。全部重試用盡才拋出，讓上層決定要不要算失敗。"""
+        return await self._get(url, params, as_json=True)
+
+    async def get_text(self, url: str, params: dict | None = None) -> str:
+        """取回原始文字。給 momo 這種要從 HTML 抽內嵌 JSON 的平台用。"""
+        return await self._get(url, params, as_json=False)

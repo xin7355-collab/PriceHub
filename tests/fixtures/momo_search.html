@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<!--
+  momo 搜尋頁的縮小版。ld+json 的結構直接照 tools/probe_platforms.py --deep momo
+  在 2026-08-11 實測到的形狀寫：
+
+    WebPage → @graph → [BreadcrumbList, ItemList → itemListElement[] → Product]
+    Product：name / position / image / description / url / offers{price,priceCurrency} / aggregateRating
+
+  真實回應一次有 30 個 Product，這裡留 4 個並各自帶一種會踩到的狀況：
+    1. 正常商品
+    2. offers 是陣列（多賣家）→ 要取最低價
+    3. 缺價格 → 必須丟掉
+    4. 與第 1 筆同一個 i_code → 必須去重
+-->
+<html lang="zh-Hant">
+<head><meta charset="utf-8"><title>momo購物網 - 搜尋結果</title>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "WebPage",
+  "@graph": [
+    {
+      "@type": "BreadcrumbList",
+      "itemListElement": [
+        {"@type": "ListItem", "position": 1, "name": "首頁", "item": "https://www.momoshop.com.tw/"}
+      ]
+    },
+    {
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "Product",
+          "name": "【SONY 索尼】WH-1000XM5 主動式降噪旗艦藍芽耳機(公司貨 保固12+6個月)",
+          "position": 1,
+          "image": "https://img3.momoshop.com.tw/goodsimg/0010/201/974/10201974_OL.jpg?t=1755925311",
+          "description": "",
+          "url": "https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=10201974&Area=search&mdiv=403&oid=1_1&cid=index&kw=WH-1000XM5&ecTagNos=",
+          "offers": {"@type": "Offer", "price": 9900, "priceCurrency": "TWD",
+                     "availability": "https://schema.org/InStock"},
+          "aggregateRating": {"@type": "AggregateRating", "ratingValue": "4.8", "reviewCount": "126"}
+        },
+        {
+          "@type": "Product",
+          "name": "【Logitech 羅技】MX Master 3S 無線靜音滑鼠 石墨灰",
+          "position": 2,
+          "image": "https://img2.momoshop.com.tw/goodsimg/0009/123/456/9123456_OL.jpg",
+          "url": "https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=9123456&Area=search",
+          "offers": [
+            {"@type": "Offer", "price": "3,290", "priceCurrency": "TWD"},
+            {"@type": "Offer", "price": 3190, "priceCurrency": "TWD"}
+          ]
+        },
+        {
+          "@type": "Product",
+          "name": "缺價格的商品",
+          "position": 3,
+          "image": "https://img2.momoshop.com.tw/x.jpg",
+          "url": "https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=7777777",
+          "offers": {"@type": "Offer", "priceCurrency": "TWD"}
+        },
+        {
+          "@type": "Product",
+          "name": "【SONY 索尼】WH-1000XM5 重複出現的同一件",
+          "position": 4,
+          "image": "https://img3.momoshop.com.tw/goodsimg/0010/201/974/10201974_OL.jpg",
+          "url": "https://www.momoshop.com.tw/goods/GoodsDetail.jsp?i_code=10201974&Area=recommend",
+          "offers": {"@type": "Offer", "price": 9900, "priceCurrency": "TWD"}
+        }
+      ]
+    }
+  ]
+}
+</script>
+</head>
+<body><div id="搜尋結果">實際頁面還有一大堆 markup，解析完全不依賴它們。</div></body>
+</html>
