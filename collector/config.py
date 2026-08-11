@@ -58,7 +58,7 @@ SUSPECT_PRICE_RATIO = 4.0
 # 指紋規則一改，所有商品的鍵就全變了。舊的 catalog 項目不會再被更新，
 # 但也不會消失 —— 網站就會永遠顯示一批不再變動的舊價格，而且看不出來。
 # 改規則時把這個數字加一，採集前會先清空重建。
-FP_VERSION = 2
+FP_VERSION = 3
 
 
 def day_index(d: date | None = None) -> int:
