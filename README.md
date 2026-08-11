@@ -48,14 +48,27 @@ tools/seed_demo.py  離線示範資料
 |---|---|---|
 | `main` | 程式碼 + workflow | 程式碼歷史要乾淨 |
 | `data` | 價格 JSON | 高頻 commit，不該污染程式碼歷史 |
-| Pages | 前端 + 資料快照（由 workflow 部署） | 部署產物與原始碼分離 |
+| `gh-pages` | 前端 + 資料快照（由 workflow 產出） | 部署產物與原始碼分離 |
 
-`data` 分支不需要手動建立 —— workflow 第一次跑時偵測不到就會自動開一個孤兒分支。
+`data` 與 `gh-pages` 都不需要手動建立 —— workflow 第一次跑時偵測不到就會自己開。
 `main` 的 `.gitignore` 擋掉 `/data/`，所以本機跑採集或 `seed_demo.py` 不會弄髒程式碼歷史。
 
-前端部署走 GitHub Actions Pages（`actions/deploy-pages`），workflow 會用
-`configure-pages` 的 `enablement: true` 自動把 Pages 打開。若你的組織政策禁止
-自動開啟，到 **Settings → Pages → Source** 手動選 **GitHub Actions** 即可。
+`gh-pages` 每次都被覆寫成一個全新的單一 commit。部署產物不需要歷史，
+留著只會讓 repo 一直長大。
+
+### 開啟網站（只需要做一次）
+
+**Settings → Pages → Source** 選 **Deploy from a branch**，分支選 `gh-pages`、目錄選 `/ (root)`。
+
+網址會是 `https://<帳號>.github.io/<repo>/`。
+
+這一步沒辦法自動化：建立 Pages 站台需要 `administration` 權限，而 Actions 的
+`GITHUB_TOKEN` 沒有這個 scope（可用的只有 `contents` / `pages` / `id-token` 那幾個）。
+所以 `actions/configure-pages` 的 `enablement: true` 一定會回
+`Resource not accessible by integration`。推 `gh-pages` 分支只需要 `contents: write`，
+這個拿得到 —— 但要讓 GitHub 真的把那個分支端出來，還是得有人按一次。
+
+開啟之後就完全自動：每次採集完 workflow 會重推 `gh-pages`，網站跟著更新。
 
 ## 資料格式
 
