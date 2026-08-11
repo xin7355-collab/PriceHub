@@ -58,6 +58,13 @@ def is_excluded(title: str, exclude: tuple[str, ...]) -> bool:
     return any(w.lower() in low for w in exclude)
 
 
+def load_exclude_common() -> tuple[str, ...]:
+    if not config.WATCHLIST_FILE.exists():
+        return ()
+    with config.WATCHLIST_FILE.open(encoding="utf-8") as f:
+        return tuple(json.load(f).get("exclude_common") or ())
+
+
 def load_queries(explicit: str | None) -> list[Query]:
     if explicit:
         return [Query(k.strip()) for k in explicit.split(",") if k.strip()]
@@ -153,6 +160,9 @@ async def collect(platform: str, queries: list[Query], limit: int) -> int:
     stats = catalog.finalize()
     stats["updated_day"] = today
     stats["updated_at"] = date.today().isoformat()
+    # 前端即時查詢時要套用同一套排除詞，否則畫面上半部濾掉了配件、
+    # 下半部的即時結果又全是保護殼。放進 index.json 讓兩邊共用一份來源。
+    stats["exclude_common"] = list(load_exclude_common())
     storage.write_index(stats)
     log.info("索引已更新：%d 件商品 / %d 個分片",
              stats["products"], len(stats["shards"]))
