@@ -155,9 +155,56 @@ LD_JSON_RE = re.compile(
     re.S | re.I)
 
 # 站台自己的前端在打哪些端點。找得到的話就走它，比解 HTML 穩定得多 ——
-# PChome 那條管線就是這樣來的。
+# PChome 那條管線就是這樣來的。第一版只找 /api/ 與 /ajax/，太窄了，
+# momo 掃出 0 個；放寬成常見的資料端點命名。
 API_HINT_RE = re.compile(
-    r'["\'](/(?:api|ajax)/[A-Za-z0-9_\-/\.]{3,60})["\']')
+    r'["\'`]((?:https?://[A-Za-z0-9.\-]+)?/(?:api|ajax|rest|graphql|service|data|'
+    r'search|product|goods)[A-Za-z0-9_\-/\.]{0,60})["\'`]')
+
+# 商品連結的樣子。HTML 裡找得到這些，就代表不用瀏覽器也解得出商品 ——
+# 這比「有沒有 ld+json」更直接。
+PRODUCT_LINK_RE = {
+    "momo": re.compile(r'i_code=(\d+)'),
+    "yahoo": re.compile(r'/p/[A-Za-z0-9\-]{6,}'),
+    "shopee": re.compile(r'-i\.(\d+)\.(\d+)'),
+    "friday": re.compile(r'/product/(\d+)'),
+    "rakuten": re.compile(r'/product/[A-Za-z0-9\-]+'),
+    "pchome": re.compile(r'/prod/([A-Z0-9\-]+)'),
+}
+
+
+def walk_types(node, acc, depth=0):
+    """ld+json 常常把商品埋在 @graph 裡，只看最外層會什麼都看不到。"""
+    if depth > 6:
+        return
+    if isinstance(node, dict):
+        t = node.get("@type")
+        if isinstance(t, str):
+            acc[t] = acc.get(t, 0) + 1
+        elif isinstance(t, list):
+            for x in t:
+                acc[str(x)] = acc.get(str(x), 0) + 1
+        for v in node.values():
+            walk_types(v, acc, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            walk_types(v, acc, depth + 1)
+
+
+def find_products(node, out, depth=0):
+    """撈出任何看起來像商品的節點（有 name，且有 offers 或 price）。"""
+    if depth > 6 or len(out) >= 3:
+        return
+    if isinstance(node, dict):
+        has_name = isinstance(node.get("name"), str)
+        if has_name and ("offers" in node or "price" in node
+                         or node.get("@type") == "Product"):
+            out.append(node)
+        for v in node.values():
+            find_products(v, out, depth + 1)
+    elif isinstance(node, list):
+        for v in node:
+            find_products(v, out, depth + 1)
 
 
 def deep(name: str) -> int:
@@ -182,6 +229,17 @@ def deep(name: str) -> int:
     text = body.decode("utf-8", "replace")
     print(f"HTTP {status}　{len(body):,} bytes　{ctype}\n")
 
+    # ---- 1. 商品連結：最直接的問題 —— HTML 裡到底有沒有商品？
+    rx = PRODUCT_LINK_RE.get(name)
+    if rx:
+        ids = rx.findall(text)
+        uniq = sorted(set(map(str, ids)))
+        print(f"── 商品連結（{rx.pattern}）：{len(ids)} 個，去重後 {len(uniq)}")
+        for s in uniq[:5]:
+            print(f"   {s}")
+        print()
+
+    # ---- 2. ld+json：要往 @graph 裡面走，只看最外層會什麼都看不到
     blocks = LD_JSON_RE.findall(text)
     print(f"── application/ld+json：{len(blocks)} 塊")
     for i, raw in enumerate(blocks):
@@ -190,26 +248,31 @@ def deep(name: str) -> int:
         except Exception as e:
             print(f"   [{i}] 解不開（{type(e).__name__}: {str(e)[:40]}）")
             continue
-        items = data if isinstance(data, list) else [data]
-        for d in items:
-            if not isinstance(d, dict):
-                continue
-            t = d.get("@type")
-            print(f"   [{i}] @type={t}　鍵：{sorted(d.keys())[:8]}")
-            # 商品清單長這樣：ItemList → itemListElement[] → 各自帶 offers
-            lst = d.get("itemListElement")
-            if isinstance(lst, list) and lst:
-                print(f"        itemListElement：{len(lst)} 筆")
-                print("        第一筆："
-                      + json.dumps(lst[0], ensure_ascii=False)[:400])
-            elif t in ("Product", "Offer"):
-                print("        內容："
-                      + json.dumps(d, ensure_ascii=False)[:400])
+        types: dict[str, int] = {}
+        walk_types(data, types)
+        print(f"   [{i}] 遞迴找到的 @type：{types}")
+        prods: list = []
+        find_products(data, prods)
+        if prods:
+            print(f"        像商品的節點：{len(prods)} 個，第一個：")
+            print("        " + json.dumps(prods[0], ensure_ascii=False)[:500])
+        else:
+            print("        沒有帶價格的商品節點")
+            print("        原始內容（前 400 字）："
+                  + json.dumps(data, ensure_ascii=False)[:400])
 
+    # ---- 3. 端點候選
     hints = sorted(set(API_HINT_RE.findall(text)))
-    print(f"\n── 頁面中出現的候選 API 路徑：{len(hints)} 個")
-    for h in hints[:25]:
+    print(f"\n── 候選端點：{len(hints)} 個")
+    for h in hints[:30]:
         print(f"   {h}")
+
+    # ---- 4. 價格字樣在不在 HTML 裡（在的話就有得解，不用瀏覽器）
+    # 千分位逗號要吃得下來，否則 "NT$ 8,690" 這種最常見的寫法會整個漏掉
+    prices = [m.replace(",", "")
+              for m in re.findall(r'(?:NT\$|\$)\s?([1-9][\d,]{2,9})', text)]
+    print(f"\n── HTML 裡的價格字樣：{len(prices)} 個"
+          + (f"，前幾個：{sorted(set(prices), key=int)[:8]}" if prices else ""))
     return 0
 
 
