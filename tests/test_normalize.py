@@ -93,6 +93,31 @@ def test_distinctive_model_merges_without_brand():
     assert fa == fb, f"應合併：{ma} vs {mb}"
 
 
+def test_bundle_never_merges_with_standalone():
+    """回歸：實測 10442 筆語料時，最大的一群有 82 筆，全是
+    「C+M組合★{不同主機板}+AMD Ryzen 7-9850X3D」—— 型號只抽到 CPU，
+    於是所有搭不同主機板的組合併成同一件商品，價格 $22,640 到 $41,140。
+    價差不到 4 倍，連 suspect 防線都攔不住，畫面會直接宣稱最低價 $22,640。"""
+    cpu = "AMD Ryzen 7-9850X3D 8核心 CPU處理器"
+    bundle = "【微星】C+M組合★MPG B850 EDGE TI WIFI 主機板+AMD Ryzen 7-9850X3D 8核心 CPU處理器"
+    assert fingerprint(cpu)[0] != fingerprint(bundle)[0], "組合包不能跟單品併"
+
+
+def test_bundles_with_different_contents_do_not_merge():
+    """組合包的身分是「裡面有什麼」，不是「其中一件是什麼」。"""
+    a = "【微星】C+M組合★MPG B850 EDGE TI WIFI 主機板+AMD Ryzen 7-9850X3D 8核心 CPU處理器"
+    b = "【華碩】C+M組合★ROG CROSSHAIR X870E APEX 主機板+AMD Ryzen 7-9850X3D 8核心 CPU處理器"
+    assert fingerprint(a)[0] != fingerprint(b)[0]
+
+
+def test_identical_bundles_still_merge():
+    """內容一樣的組合包，兩個平台寫法不同也要併得起來 ——
+    否則就只是把問題從「亂併」換成「全都不併」。"""
+    momo = "【微星】C+M組合★MPG B850 EDGE TI WIFI 主機板+AMD Ryzen 7-9850X3D 8核心 CPU處理器"
+    pchome = "微星 MPG B850 EDGE TI WIFI 主機板 + AMD Ryzen 7-9850X3D CPU處理器 組合"
+    assert fingerprint(momo)[0] == fingerprint(pchome)[0]
+
+
 def test_specs_order_does_not_matter():
     """兩個平台把規格寫在標題不同位置，集合相同就該得到相同的鍵。"""
     a, _ = fingerprint("Kingston FURY DDR5 5600 32GB 記憶體")

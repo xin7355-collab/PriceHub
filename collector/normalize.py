@@ -196,6 +196,36 @@ def is_distinctive_model(model: str | None) -> bool:
         and any(c.isalpha() for c in model) and any(c.isdigit() for c in model)
 
 
+# ---------------------------------------------------------------- 組合包
+# 「主機板+CPU」這種組合包，型號抽出來只會拿到其中一件，於是所有搭不同
+# 主機板的組合全部併成同一件商品。實測 10442 筆語料時，最大的一群有 82 筆，
+# 全是「C+M組合★{不同主機板}+AMD Ryzen 7-9850X3D」，價格從 $22,640 到
+# $41,140 —— 而且價差不到 4 倍，連 suspect 防線都攔不住，畫面上會直接
+# 宣稱最低價 $22,640。
+#
+# 「A+B」那條規則要求兩側都以文字開頭，不能是數字 —— 否則
+# 「保固12+6個月」會被當成組合包，而保固年限在台灣商品標題裡到處都是。
+BUNDLE_RE = re.compile(
+    r"組合|同捆|超值組|[+＋]\s*(?:贈|送)|"
+    r"[A-Za-z一-鿿][A-Za-z0-9一-鿿]+\s*[+＋]\s*"
+    r"[A-Za-z一-鿿][A-Za-z0-9一-鿿]+"
+)
+
+
+def all_distinctive_models(title: str) -> str:
+    """標題裡所有夠獨特的型號，排序後串接。
+
+    組合包的身分是「裡面有什麼」，不是「其中一件是什麼」。內容不同的組合
+    自然得到不同的鍵，內容相同的仍然合併得起來。
+    """
+    out: set[str] = set()
+    for m in MODEL_RE.finditer(_fullwidth_to_half(title)):
+        tok = m.group(0).lower().strip("-")
+        if is_distinctive_model(tok) and not UNIT_ONLY_RE.match(tok):
+            out.add(tok)
+    return "+".join(sorted(out))
+
+
 def tokens(title: str) -> set[str]:
     """粗分詞：英數以空白切，中文以 2-gram 切。無需外部斷詞套件。"""
     t = clean_title(title).lower()
@@ -254,7 +284,14 @@ def fingerprint(title: str) -> tuple[str, dict]:
 
     specs = extract_specs(title)
 
-    if is_distinctive_model(model):
+    if BUNDLE_RE.search(title):
+        # 組合包不能跟單品併，也不能彼此亂併 —— 用內容物的型號集合當身分。
+        # 抓不到任何型號時退回全標題詞集，寧可各自成群也不要亂認親。
+        models = all_distinctive_models(title)
+        key = (f"bundle|{models}|{specs}" if models
+               else "bundle|t|" + " ".join(sorted(tokens(cleaned))))
+        level = "medium" if models else "weak"
+    elif is_distinctive_model(model):
         # 型號本身已經只指一款商品，品牌可有可無 —— 這一條是關鍵：
         # PChome 常把品牌放在獨立欄位而不寫進標題（"WH-1000XM5 黑色 …"），
         # 硬要求品牌一致，同一件商品就會在兩個平台各自成為一張卡片。
