@@ -181,24 +181,42 @@ jobs:
           fi
           echo "檢查 $URL"
 
-          # Pages 從分支重建有延遲，最多等 5 分鐘
-          code=000
+          # 頁面與資料一起驗。Pages 從分支重建有延遲，最多等 5 分鐘。
+          # 注意不能只 grep "PRICEPORT" —— README.md 裡也有這個字，
+          # 當 Pages 服務的是 main 分支時，Jekyll 會把 README 渲染成首頁，
+          # 於是回 200、也含這個字，但它根本不是應用程式。
+          # 改用只有 web/index.html 才有的 DOM 標記。
+          page_code=000; data_code=000
           for i in $(seq 1 20); do
-            code=$(curl -sS -L -o page.html -w '%{http_code}' "$URL" || echo 000)
-            [ "$code" = "200" ] && break
-            echo "  [$i] HTTP $code，15 秒後重試"
+            page_code=$(curl -sS -L -o page.html -w '%{http_code}' "$URL" || echo 000)
+            data_code=$(curl -sS -L -o idx.json -w '%{http_code}' "${URL}data/index.json" || echo 000)
+            if [ "$page_code" = "200" ] && [ "$data_code" = "200" ]; then break; fi
+            echo "  [$i] 頁面 $page_code / 資料 $data_code，15 秒後重試"
             sleep 15
           done
-          if [ "$code" != "200" ]; then
-            echo "::error::網站沒有回應 200（最後一次 $code）。"
-            echo "::error::若這是第一次部署，請到 Settings → Pages 把 Source 設為 gh-pages 分支。"
+
+          is_app=no
+          grep -q 'id="strap"' page.html && grep -q 'id="out"' page.html && is_app=yes
+
+          if [ "$page_code" != "200" ]; then
+            echo "::error::網站沒有回應 200（最後一次 $page_code）。"
+            echo "::error::到 Settings → Pages，Source 選 Deploy from a branch，分支 gh-pages、目錄 / (root)。"
             exit 1
           fi
-          grep -q "PRICEPORT" page.html || {
-            echo "::error::回應了 200，但內容不是比價通的頁面"; exit 1; }
+          if [ "$is_app" = "no" ]; then
+            echo "::error::網址回應 200，但服務的不是比價通的前端。"
+            echo "::error::最可能的原因：Pages 的 Source 指向了 main 分支 —— main 的根目錄沒有"
+            echo "::error::index.html，Jekyll 會改把 README.md 渲染成首頁，看起來像成功了。"
+            echo "::error::請改成 Deploy from a branch → 分支 gh-pages、目錄 / (root)。"
+            echo "--- 實際收到的前 300 字元 ---"; head -c 300 page.html; echo
+            exit 1
+          fi
+          if [ "$data_code" != "200" ]; then
+            echo "::error::前端出得來，但 data/index.json 回 $data_code —— 畫面會是一片空白。"
+            echo "::error::確認 Pages 的 Source 是 gh-pages 分支（資料只存在於該分支）。"
+            exit 1
+          fi
 
-          # 前端讀不到 index.json 就只會是一片空白，所以要單獨驗它
-          curl -sSf -o idx.json "${URL}data/index.json"
           python3 - <<'PY'
           import json
           d = json.load(open("idx.json"))
