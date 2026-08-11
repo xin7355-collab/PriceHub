@@ -189,11 +189,27 @@ async function boot(){
     idx = await loadIndex();
   } catch (e) {
     document.getElementById('strap').innerHTML = '<span class="pill demo">無資料</span>';
-    document.getElementById('out').append(el(`
-      <div class="note warn"><h2>讀不到資料</h2>
-      <p>價目板需要 <code>data/index.json</code>。用檔案總管直接開啟 HTML 會被瀏覽器擋下，請從專案根目錄啟動本機伺服器：</p>
-      <code>python -m http.server 8000</code>
-      <p style="margin-top:10px">然後開啟 http://localhost:8000/web/ ；若還沒有資料，先跑 <code>python tools/seed_demo.py</code>。</p></div>`));
+    // 同一段訊息在三種情境下該說的話完全不同。原本一律叫人去跑
+    // python -m http.server —— 對著已經上線的網站說這句話毫無意義，
+    // 而且會把「採集還沒跑過」誤導成「你本機沒開伺服器」。
+    const host = location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+    let body;
+    if (location.protocol === 'file:') {
+      body = `<p>瀏覽器不允許用 <code>file://</code> 讀取旁邊的 JSON。請從專案根目錄啟動本機伺服器：</p>
+        <code>python -m http.server 8000</code>
+        <p style="margin-top:10px">然後開啟 http://localhost:8000/web/</p>`;
+    } else if (isLocal) {
+      body = `<p>本機伺服器有起來，但找不到 <code>data/index.json</code>。先產生示範資料：</p>
+        <code>python tools/seed_demo.py</code>
+        <p style="margin-top:10px">或跑一次真實採集：<code>python -m collector.run --platform pchome</code></p>`;
+    } else {
+      body = `<p>網站已經上線，但還沒有價格資料。可能是採集還沒跑過第一班，
+        或 GitHub Pages 的來源分支不是 <code>gh-pages</code>（價格只存在於該分支）。</p>
+        <p style="margin-top:10px">到 repo 的 <b>Actions → 採集價格</b> 看最近一次的執行結果。</p>`;
+    }
+    document.getElementById('out').append(el(
+      `<div class="note warn"><h2>讀不到資料</h2>${body}</div>`));
     return;
   }
 
