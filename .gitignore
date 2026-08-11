@@ -9,3 +9,6 @@ __pycache__/
 
 # workflow 用來掛 data 分支的 worktree
 /databr/
+
+# 本機瀏覽器採集的暫存輸出（collector/sources/browser.py --dump）
+/dumps/

@@ -7,6 +7,7 @@
 ```bash
 pip install -r requirements.txt
 python tests/test_normalize.py     # 離線測試，不需網路
+python tests/test_browser.py       # 同上（瀏覽器採集層）
 python tools/seed_demo.py          # 產生示範資料
 python -m http.server 8000
 # 開啟 http://localhost:8000/web/
@@ -34,8 +35,10 @@ collector/
   normalize.py   標題清理、品牌型號抽取、跨平台指紋  ← 核心
   storage.py     分片 catalog + append-only 時序，原子寫入
   sources/       每個平台一個檔案
+  profiles/      瀏覽器採集的 CSS 選擇器（JSON，改版時只改這裡）
   run.py         單平台採集入口，含品質閘門
-web/index.html   單檔前端，無外部相依
+  browse.py      調選擇器用的除錯工具（本機）
+web/index.html   單檔前端
 tools/seed_demo.py  離線示範資料
 ```
 
@@ -98,12 +101,17 @@ tools/seed_demo.py  離線示範資料
 
 ## 加平台
 
+**有 API 的平台**（首選）：
+
 1. 在 `collector/sources/` 新增檔案，實作 `search()` 回傳 `list[Offer]`
 2. 檔尾呼叫 `register(YourSource())`
 3. 在 `run.py` 的 import 加一行
 4. 在 `collect.yml` 的 `matrix.platform` 加一個名字
 
 `run.py` 與 workflow 的其他部分完全不用改。
+
+**沒有 API 的平台**（momo / Yahoo / 蝦皮，本機跑）：不用寫 Python，
+在 `collector/profiles/` 放一個 JSON 就會自動註冊成一個平台。詳見下節。
 
 ### 通路優先序
 
@@ -118,6 +126,33 @@ tools/seed_demo.py  離線示範資料
 
 不建議在 GitHub Actions 上用瀏覽器硬爬蝦皮／淘寶：runner 的出口是 Azure 資料中心 IP，
 會被風控直接擋下，成功率低到無法當產品用。走官方通路是唯一能穩定運轉的路。
+
+## 瀏覽器採集（選用，只在本機跑）
+
+聯盟網 API 申請下來之前，momo 這類平台可以先用 [crawl4ai](https://github.com/unclecode/crawl4ai)
+從自己的機器（住宅 IP）補資料。**不要加進 `collect.yml` 的 matrix** —— 理由同上一節。
+
+```bash
+pip install -r requirements-browser.txt
+python -m playwright install chromium
+
+# 1. 把渲染後的 HTML 存下來
+python -m collector.browse --platform momo --keyword "WH-1000XM5" --dump
+
+# 2. 對著 dumps/momo.html 調 collector/profiles/momo.json 的選擇器，
+#    不碰網路，改一次試一次
+python -m collector.browse --platform momo --from-dump dumps/momo.html
+
+# 3. 選擇器對了再正式採集，寫進與 pchome 完全相同的 data/
+python -m collector.run --platform momo
+```
+
+選擇器放在 `collector/profiles/{平台}.json`，站台改版時只要改 JSON，不用動 Python。
+放一個新的 JSON 進去就等於多一個平台。
+
+> ⚠️ 內附的 `momo.json` 選擇器是**起手式，尚未對真實頁面驗證過**（`"verified": false`）。
+> 第一次使用一定要照上面步驟一、二核對過再採集。抽到 0 筆幾乎都是選擇器沒對上，
+> 不是程式壞了 —— `browse` 會把 baseSelector 抽到幾列、第一列長什麼樣印給你看。
 
 ## 設計約束
 

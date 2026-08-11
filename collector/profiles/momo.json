@@ -1,0 +1,18 @@
+{
+  "platform": "momo",
+  "label": "momo購物網",
+  "verified": false,
+  "note": "選擇器為起手式，尚未對真實頁面驗證過。第一次使用請務必先跑 `python -m collector.browse --platform momo --keyword 測試字 --dump`，用存下來的 HTML 核對下面每一條選擇器，改完再採集。抽出 0 筆幾乎都是這裡沒對上，不是程式壞了。",
+  "search_url": "https://www.momoshop.com.tw/search/searchShop.jsp?keyword={keyword}",
+  "wait_for": "css:li.goodsItemLi",
+  "delay_ms": 1200,
+  "schema": {
+    "baseSelector": "li.goodsItemLi",
+    "fields": [
+      { "name": "title", "selector": "h3.prdName", "type": "text" },
+      { "name": "price", "selector": "span.price b", "type": "text" },
+      { "name": "url", "selector": "a.goods-img-url", "type": "attribute", "attribute": "href" },
+      { "name": "image", "selector": "img.prdImg", "type": "attribute", "attribute": "src" }
+    ]
+  }
+}

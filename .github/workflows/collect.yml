@@ -49,7 +49,9 @@ jobs:
       - name: 離線測試
         # 比對層壞掉會靜默產生錯誤的指紋，那比採集失敗更難發現。
         # 這裡刻意不加 `|| true`：測試紅了就不該讓它去寫資料。
-        run: python tests/test_normalize.py
+        run: |
+          python tests/test_normalize.py
+          python tests/test_browser.py
 
       - name: 準備 data 分支工作區
         # data 分支不存在時自動建立孤兒分支 —— 全新的 repo 第一次跑

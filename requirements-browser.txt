@@ -1,0 +1,11 @@
+# 選用相依：只有要跑 collector/sources/browser.py（momo 等無 API 平台）才需要。
+#
+# 刻意與 requirements.txt 分開的兩個理由：
+#   1. crawl4ai 會拉進 playwright / litellm / numpy 等一大包，
+#      主採集管線（pchome）只需要 aiohttp，不該為此變胖。
+#   2. GitHub Actions 上不跑瀏覽器採集（出口 IP 會被風控擋），
+#      裝了也只是浪費每一班排程的時間。
+#
+#   pip install -r requirements-browser.txt
+#   python -m playwright install chromium
+crawl4ai==0.9.2
