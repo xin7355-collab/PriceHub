@@ -31,6 +31,7 @@ jobs:
           # 沒裝 crawl4ai，需要它的兩個案例會自己跳過；
           # 純函式的部分（價格解析、相對網址、profile 格式）照跑。
           python tests/test_browser.py
+          python tests/test_storage.py
 
       - name: 示範資料可產生且格式正確
         # 這步同時驗證 storage 分片、時序寫入與 index 產出，

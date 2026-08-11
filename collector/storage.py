@@ -128,8 +128,28 @@ def append_point(fp: str, platform: str, price: int, day: int) -> None:
     pts: list[list[int]] = doc["series"].setdefault(platform, [])
 
     if pts and pts[-1][0] == day:
+        # 最常見的情況：同一天重跑，覆寫當日價格點
         pts[-1][1] = price
+    elif pts and day < pts[-1][0]:
+        # 亂序重放：cron 補跑、手動重跑舊 job、或 seed_demo 回填歷史。
+        # 這一天可能已經躺在序列中間，只比對最後一點會漏掉它，
+        # 於是同一天被寫成兩個點，曲線就從此歪掉。
+        for p in pts:
+            if p[0] == day:
+                p[1] = price
+                break
+        else:
+            # 這一天還不在序列裡。找出它該插在哪，並比照順序寫入時的規則：
+            # 與前一個點差距太小就不存 —— 否則重放會把當初被壓掉的點加回來，
+            # 同一批資料跑兩次結果不同，就不算冪等了。
+            idx = 0
+            while idx < len(pts) and pts[idx][0] < day:
+                idx += 1
+            if idx > 0 and abs(pts[idx - 1][1] - price) < config.SERIES_MIN_DELTA:
+                return
+            pts.insert(idx, [day, price])
     elif pts and abs(pts[-1][1] - price) < config.SERIES_MIN_DELTA:
+        # 價格沒動，不值得為它多存一個點
         return
     else:
         pts.append([day, price])
