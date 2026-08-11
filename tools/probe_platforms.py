@@ -150,7 +150,73 @@ def probe(p: dict) -> dict:
     return out
 
 
+LD_JSON_RE = re.compile(
+    r'<script[^>]+type="application/ld\+json"[^>]*>(.*?)</script>',
+    re.S | re.I)
+
+# 站台自己的前端在打哪些端點。找得到的話就走它，比解 HTML 穩定得多 ——
+# PChome 那條管線就是這樣來的。
+API_HINT_RE = re.compile(
+    r'["\'](/(?:api|ajax)/[A-Za-z0-9_\-/\.]{3,60})["\']')
+
+
+def deep(name: str) -> int:
+    """挖單一平台：把內嵌 JSON 的結構攤開，並列出頁面裡出現的候選 API 路徑。
+
+    偵察回報「有 ld+json」只代表有這個標籤，不代表裡面就是商品清單 ——
+    也可能只是麵包屑或網站資訊。要寫解析器之前得先看清楚。
+    """
+    p = next((x for x in PLATFORMS if x["name"] == name), None)
+    if not p:
+        print(f"沒有這個平台：{name}；可用的有 "
+              + "、".join(x["name"] for x in PLATFORMS))
+        return 1
+
+    url = p["search"].replace("{kw}", urllib.parse.quote(KEYWORD))
+    print(f"深入偵察 {p['label']}\n{url}\n")
+    try:
+        status, ctype, body = fetch(url)
+    except Exception as e:
+        print(f"取頁失敗：{e}")
+        return 1
+    text = body.decode("utf-8", "replace")
+    print(f"HTTP {status}　{len(body):,} bytes　{ctype}\n")
+
+    blocks = LD_JSON_RE.findall(text)
+    print(f"── application/ld+json：{len(blocks)} 塊")
+    for i, raw in enumerate(blocks):
+        try:
+            data = json.loads(raw.strip())
+        except Exception as e:
+            print(f"   [{i}] 解不開（{type(e).__name__}: {str(e)[:40]}）")
+            continue
+        items = data if isinstance(data, list) else [data]
+        for d in items:
+            if not isinstance(d, dict):
+                continue
+            t = d.get("@type")
+            print(f"   [{i}] @type={t}　鍵：{sorted(d.keys())[:8]}")
+            # 商品清單長這樣：ItemList → itemListElement[] → 各自帶 offers
+            lst = d.get("itemListElement")
+            if isinstance(lst, list) and lst:
+                print(f"        itemListElement：{len(lst)} 筆")
+                print("        第一筆："
+                      + json.dumps(lst[0], ensure_ascii=False)[:400])
+            elif t in ("Product", "Offer"):
+                print("        內容："
+                      + json.dumps(d, ensure_ascii=False)[:400])
+
+    hints = sorted(set(API_HINT_RE.findall(text)))
+    print(f"\n── 頁面中出現的候選 API 路徑：{len(hints)} 個")
+    for h in hints[:25]:
+        print(f"   {h}")
+    return 0
+
+
 def main() -> int:
+    if len(sys.argv) > 2 and sys.argv[1] == "--deep":
+        return deep(sys.argv[2])
+
     print(f"關鍵字：{KEYWORD}　每個平台只送一次請求\n")
     rows = []
     for p in PLATFORMS:

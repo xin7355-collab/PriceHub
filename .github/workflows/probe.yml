@@ -25,3 +25,11 @@ jobs:
           python-version: "3.12"
       - name: 偵察各通路
         run: python tools/probe_platforms.py
+
+      - name: 深入偵察 momo（內嵌 JSON 的實際結構）
+        # 「有 ld+json」只代表有這個標籤，不代表裡面就是商品清單。
+        # 要寫解析器之前得先看清楚裡面裝什麼。
+        run: python tools/probe_platforms.py --deep momo
+
+      - name: 深入偵察 Yahoo
+        run: python tools/probe_platforms.py --deep yahoo
