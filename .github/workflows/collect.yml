@@ -13,6 +13,16 @@ on:
   repository_dispatch:
     # 前端「加入追蹤」用這個事件觸發，免伺服器
     types: [track-product]
+  push:
+    # 改了採集清單或採集邏輯就立刻跑一班，不用等下一個 6 小時。
+    # 這同時也是全新 repo 的自舉路徑：第一次 push 就會建出 data 分支
+    # 並把網站部署起來，不需要任何手動步驟。
+    branches: [main]
+    paths:
+      - "watchlist.json"
+      - "collector/**"
+      - "web/**"
+      - ".github/workflows/collect.yml"
 
 permissions:
   contents: write
