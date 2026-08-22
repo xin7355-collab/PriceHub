@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>比價通 PRICEPORT</title>
+<meta name="theme-color" content="#14202A">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root{
+  --board:#14202A; --flap:#1E2E3C; --flap-edge:#0D1720;
+  --amber:#F0A93B; --amber-dim:#9C7433;
+  --paper:#E4E7E2; --card:#F4F5F2; --rule:#C7CDC6;
+  --down:#0F6B4F; --up:#A8412B; --muted:#6B7680; --ink:#1B2630;
+  --pad:clamp(14px,4vw,28px);
+  --display:"Oswald",system-ui,sans-serif;
+  --body:"Noto Sans TC","PingFang TC","Microsoft JhengHei",system-ui,sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,"SFMono-Regular",monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  background:var(--paper);color:var(--ink);font-family:var(--body);
+  line-height:1.55;padding-bottom:env(safe-area-inset-bottom);
+  font-size:16px;
+}
+.wrap{max-width:760px;margin:0 auto;padding:0 var(--pad) 64px}
+
+/* ── 站牌式頁首 ───────────────────────────── */
+header{padding:26px 0 18px;border-bottom:2px solid var(--ink)}
+.mast{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+h1{
+  font-family:var(--display);font-weight:600;font-size:clamp(30px,9vw,46px);
+  letter-spacing:.14em;line-height:.95;text-transform:uppercase;
+}
+.zh{font-size:clamp(15px,4vw,19px);font-weight:700;letter-spacing:.32em;color:var(--muted)}
+.strap{
+  display:flex;gap:8px;align-items:center;flex-wrap:wrap;
+  margin-top:10px;font-family:var(--mono);font-size:12px;color:var(--muted);
+}
+.pill{
+  border:1px solid var(--rule);border-radius:2px;padding:2px 7px;
+  letter-spacing:.06em;background:var(--card);
+}
+.pill.live{border-color:var(--down);color:var(--down)}
+.pill.demo{border-color:var(--up);color:var(--up)}
+
+/* ── 搜尋 ────────────────────────────────── */
+.search{position:relative;margin:20px 0 8px}
+.search input{
+  width:100%;font-family:var(--body);font-size:17px;
+  padding:15px 15px 15px 44px;border:2px solid var(--ink);border-radius:3px;
+  background:var(--card);color:var(--ink);
+}
+.search input:focus{outline:3px solid var(--amber);outline-offset:1px}
+.search svg{position:absolute;left:15px;top:50%;transform:translateY(-50%);opacity:.5}
+.count{font-family:var(--mono);font-size:12px;color:var(--muted);margin:10px 2px 18px}
+
+/* ── 排序 ────────────────────────────────── */
+.sortbar{display:flex;gap:6px;margin-top:12px;flex-wrap:wrap}
+.sortbtn{
+  font-family:var(--mono);font-size:12px;letter-spacing:.04em;
+  padding:7px 11px;border:1px solid var(--rule);border-radius:2px;
+  background:var(--card);color:var(--muted);cursor:pointer;
+}
+.sortbtn:hover{border-color:var(--ink);color:var(--ink)}
+.sortbtn:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.sortbtn.is-on{background:var(--ink);border-color:var(--ink);color:var(--paper);font-weight:600}
+
+/* ── 價目板 ──────────────────────────────── */
+.board{
+  background:var(--board);border-radius:4px;overflow:hidden;margin-bottom:16px;
+  box-shadow:0 1px 0 var(--rule),0 8px 22px -14px rgba(20,32,42,.55);
+}
+.board-head{
+  display:flex;align-items:flex-start;gap:12px;
+  padding:16px 16px 13px;border-bottom:1px solid rgba(240,169,59,.16);
+}
+.head-txt{flex:1;min-width:0}          /* min-width:0 才准長標題換行而不是把卡片撐爆 */
+.thumb{
+  flex:0 0 58px;width:58px;height:58px;border-radius:3px;overflow:hidden;
+  background:#F4F5F2;display:flex;align-items:center;justify-content:center;
+}
+.thumb img{width:100%;height:100%;object-fit:contain;display:block}
+/* 沒有圖、或圖載不出來 —— 留一塊安靜的底色，不要破圖框 */
+.thumb.none{background:rgba(255,255,255,.05)}
+.title{
+  font-family:var(--display);font-size:17px;font-weight:500;letter-spacing:.05em;
+  color:#F2F4F1;line-height:1.3;text-transform:uppercase;
+}
+.sub{font-family:var(--mono);font-size:11px;color:var(--amber-dim);margin-top:4px;letter-spacing:.06em}
+.trend{font-family:var(--mono);font-size:13px;font-weight:600;white-space:nowrap;text-align:right}
+.trend .lo{color:#5FD6A6}.trend .hi{color:#E8836A}.trend .flat{color:var(--amber-dim)}
+.trend small{display:block;font-size:9px;color:var(--amber-dim);font-weight:400;letter-spacing:.1em}
+
+/* 翻牌列 */
+.row{
+  display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:10px;
+  padding:11px 16px;border-bottom:1px solid rgba(255,255,255,.05);
+  text-decoration:none;color:inherit;
+}
+.row:last-of-type{border-bottom:0}
+.row:focus-visible{outline:2px solid var(--amber);outline-offset:-2px}
+.plat{font-family:var(--mono);font-size:12px;letter-spacing:.1em;color:#B9C3CC;text-transform:uppercase}
+.flaps{display:flex;gap:2px}
+.flap{
+  font-family:var(--mono);font-weight:600;font-size:17px;
+  background:var(--flap);color:var(--amber);
+  padding:5px 3px;min-width:17px;text-align:center;border-radius:2px;
+  border-bottom:1px solid var(--flap-edge);
+  animation:flip .34s cubic-bezier(.3,.9,.4,1) backwards;
+}
+.flap.sym{color:var(--amber-dim);min-width:11px}
+@keyframes flip{
+  from{transform:rotateX(-88deg);opacity:0}
+  to{transform:rotateX(0);opacity:1}
+}
+.best{
+  font-family:var(--mono);font-size:9px;letter-spacing:.1em;
+  background:var(--amber);color:var(--board);padding:3px 5px;border-radius:2px;font-weight:600;
+}
+.gap{font-family:var(--mono);font-size:10px;color:#7A8894}
+
+.suspect{
+  padding:9px 16px 11px;font-size:11.5px;line-height:1.5;
+  color:#E8836A;background:rgba(232,131,106,.09);
+  border-top:1px solid rgba(232,131,106,.25);
+}
+
+/* 走勢 */
+.spark{padding:12px 16px 14px;border-top:1px solid rgba(240,169,59,.16);display:flex;align-items:center;gap:12px}
+.spark svg{flex:1;height:34px;overflow:visible}
+.spark .lbl{font-family:var(--mono);font-size:9px;color:var(--amber-dim);letter-spacing:.1em;white-space:nowrap}
+
+/* ── 即時查詢 ────────────────────────────── */
+.livesearch{margin:26px 0 8px;border-top:2px solid var(--ink);padding-top:14px}
+.live-head{display:flex;align-items:center;gap:9px;margin-bottom:10px;flex-wrap:wrap}
+.live-tag{
+  font-family:var(--mono);font-size:10px;letter-spacing:.12em;font-weight:600;
+  background:var(--ink);color:var(--paper);padding:3px 7px;border-radius:2px;
+}
+.live-msg{font-family:var(--mono);font-size:11px;color:var(--muted)}
+.live-row{
+  display:flex;align-items:center;gap:11px;padding:9px 10px;
+  border:1px solid var(--rule);border-radius:3px;margin-bottom:7px;
+  background:var(--card);text-decoration:none;color:inherit;
+}
+.live-row:hover{border-color:var(--ink)}
+.live-row:focus-visible{outline:2px solid var(--amber);outline-offset:1px}
+.thumb.sm{flex:0 0 40px;width:40px;height:40px}
+.live-title{flex:1;min-width:0;font-size:13.5px;line-height:1.35}
+.live-price{
+  font-family:var(--mono);font-weight:600;font-size:15px;white-space:nowrap;text-align:right;
+}
+.live-price small{display:block;font-size:9px;font-weight:400;color:var(--muted);letter-spacing:.08em}
+
+/* ── 狀態 ────────────────────────────────── */
+.note{
+  background:var(--card);border:1px solid var(--rule);border-left:3px solid var(--ink);
+  padding:16px 18px;border-radius:3px;margin:12px 0;
+}
+.note h2{font-family:var(--display);font-size:16px;letter-spacing:.1em;margin-bottom:7px;text-transform:uppercase}
+.note p{font-size:14px;color:var(--muted);margin-bottom:6px}
+.note code{
+  font-family:var(--mono);font-size:12.5px;background:var(--board);color:var(--amber);
+  padding:2px 6px;border-radius:2px;display:inline-block;margin-top:3px;
+}
+.note.warn{border-left-color:var(--up)}
+footer{margin-top:34px;padding-top:16px;border-top:1px solid var(--rule);
+  font-family:var(--mono);font-size:11px;color:var(--muted);line-height:1.8}
+
+@media (prefers-reduced-motion:reduce){
+  .flap{animation:none}
+  *{transition:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <div class="mast"><h1>Priceport</h1><span class="zh">比價通</span></div>
+  <div class="strap" id="strap"><span class="pill">載入中</span></div>
+</header>
+
+<div class="search">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+    <circle cx="11" cy="11" r="7"/><path d="M20 20l-4.5-4.5"/></svg>
+  <input id="q" type="search" placeholder="搜尋商品、品牌或型號" autocomplete="off" aria-label="搜尋商品">
+</div>
+<div class="sortbar" role="group" aria-label="排序方式">
+  <button class="sortbtn is-on" data-sort="price">價格低→高</button>
+  <button class="sortbtn" data-sort="price-desc">價格高→低</button>
+  <button class="sortbtn" data-sort="platforms">通路數</button>
+</div>
+<div class="count" id="count"></div>
+<div id="out"></div>
+
+<footer>
+  價格為排程快照，非即時報價。下單前請至平台確認。<br>
+  PRICEPORT · 資料每 6 小時更新一班
+</footer>
+</div>
+
+<script>
+/* 資料目錄位置隨部署方式而不同：
+     本機 python -m http.server → 前端在 /web/，資料在 /data/   → ../data
+     gh-pages（workflow 把 web/* 攤平到站台根目錄）             → ./data
+   兩者都試，第一個讀得到 index.json 的就是它。寫死其中一個會讓
+   另一種部署方式靜默變成空白頁。 */
+const DATA_CANDIDATES = (() => {
+  const forced = new URLSearchParams(location.search).get('data');
+  return forced ? [forced] : ['./data', '../data'];
+})();
+let DATA = DATA_CANDIDATES[0];
+const PLAT = {pchome:'PChome', momo:'momo', shopee:'蝦皮', yahoo:'Yahoo', coupang:'酷澎', taobao:'淘寶'};
+/* 即時搜尋代理。網址參數 ?api= 優先，其次 config.json，都沒有就停用 ——
+   停用時整個即時搜尋的路徑完全不會被走到，網站行為與加這功能之前一模一樣。 */
+let SEARCH_API = new URLSearchParams(location.search).get('api') || null;
+let EXCLUDE = [];
+let liveSeq = 0;                     // 丟棄慢回來的舊查詢，否則結果會互相蓋掉
+const EPOCH = Date.UTC(2020,0,1);
+let ITEMS = [], SERIES = new Map();
+
+const el = (h) => { const d=document.createElement('div'); d.innerHTML=h.trim(); return d.firstElementChild; };
+const money = (n) => n.toLocaleString('en-US');
+
+async function loadIndex(){
+  let lastErr;
+  for (const base of DATA_CANDIDATES){
+    try {
+      const r = await fetch(`${base}/index.json`, {cache:'no-store'});
+      if (!r.ok) { lastErr = new Error(`${base} → HTTP ${r.status}`); continue; }
+      const idx = await r.json();
+      DATA = base;                       // 後續 catalog / series 都跟著這個根走
+      return idx;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error('no data root');
+}
+
+async function boot(){
+  let idx;
+  try {
+    idx = await loadIndex();
+  } catch (e) {
+    document.getElementById('strap').innerHTML = '<span class="pill demo">無資料</span>';
+    // 同一段訊息在三種情境下該說的話完全不同。原本一律叫人去跑
+    // python -m http.server —— 對著已經上線的網站說這句話毫無意義，
+    // 而且會把「採集還沒跑過」誤導成「你本機沒開伺服器」。
+    const host = location.hostname;
+    const isLocal = host === 'localhost' || host === '127.0.0.1' || host === '';
+    let body;
+    if (location.protocol === 'file:') {
+      body = `<p>瀏覽器不允許用 <code>file://</code> 讀取旁邊的 JSON。請從專案根目錄啟動本機伺服器：</p>
+        <code>python -m http.server 8000</code>
+        <p style="margin-top:10px">然後開啟 http://localhost:8000/web/</p>`;
+    } else if (isLocal) {
+      body = `<p>本機伺服器有起來，但找不到 <code>data/index.json</code>。先產生示範資料：</p>
+        <code>python tools/seed_demo.py</code>
+        <p style="margin-top:10px">或跑一次真實採集：<code>python -m collector.run --platform pchome</code></p>`;
+    } else {
+      body = `<p>網站已經上線，但還沒有價格資料。可能是採集還沒跑過第一班，
+        或 GitHub Pages 的來源分支不是 <code>gh-pages</code>（價格只存在於該分支）。</p>
+        <p style="margin-top:10px">到 repo 的 <b>Actions → 採集價格</b> 看最近一次的執行結果。</p>`;
+    }
+    document.getElementById('out').append(el(
+      `<div class="note warn"><h2>讀不到資料</h2>${body}</div>`));
+    return;
+  }
+
+  // 設定檔讀不到、格式壞掉、或沒填 —— 都只是「即時搜尋停用」，不該讓網站掛掉
+  try {
+    const cfg = await (await fetch('config.json', {cache:'no-store'})).json();
+    if (!SEARCH_API && typeof cfg.searchApi === 'string' && cfg.searchApi.trim()) {
+      SEARCH_API = cfg.searchApi.trim().replace(/\/+$/, '');
+    }
+  } catch { /* 沒有設定檔就是沒有，不影響已採集商品的搜尋 */ }
+  EXCLUDE = Array.isArray(idx.exclude_common) ? idx.exclude_common : [];
+
+  const shards = await Promise.all(
+    idx.shards.map(s => fetch(`${DATA}/catalog/${s}.json`).then(r=>r.json()).catch(()=>({})))
+  );
+  ITEMS = shards.flatMap(o => Object.values(o))
+                .filter(x => x.best)
+                .sort((a,b) => Object.keys(b.offers).length - Object.keys(a.offers).length);
+
+  document.getElementById('strap').innerHTML =
+    `<span class="pill ${idx.demo?'demo':'live'}">${idx.demo?'示範資料':'已更新'} ${idx.updated_at||''}</span>` +
+    `<span class="pill">${idx.products} 件商品</span>` +
+    `<span class="pill">${(idx.platforms||[]).length} 個通路</span>`;
+
+  render('');
+}
+
+const SORTS = {
+  // 比價網站的預設就該是最便宜的排前面
+  'price':      { label:'價格低→高', fn:(a,b) => a.best.price - b.best.price },
+  'price-desc': { label:'價格高→低', fn:(a,b) => b.best.price - a.best.price },
+  // 通路數相同時再用價格分高下，否則同分的順序會隨載入順序亂跳
+  'platforms':  { label:'通路數',    fn:(a,b) =>
+                    nOffers(b) - nOffers(a) || a.best.price - b.best.price },
+};
+let SORT = 'price';
+
+const nOffers = (x) => Object.keys(x.offers || {}).length;
+
+function render(q){
+  const out = document.getElementById('out');
+  out.textContent = '';
+  const k = q.trim().toLowerCase();
+  const hits = (k ? ITEMS.filter(x =>
+    (x.title+' '+(x.brand||'')+' '+(x.model||'')).toLowerCase().includes(k)) : ITEMS)
+    .slice()                       // 不要就地排序 ITEMS，否則搜尋結果會污染原始順序
+    .sort(SORTS[SORT].fn);
+
+  document.getElementById('count').textContent =
+    (k ? `${hits.length} 件符合「${q.trim()}」` : `${hits.length} 件商品`) +
+    `，依${SORTS[SORT].label}排序`;
+
+  if (!hits.length && !SEARCH_API){
+    out.append(el(`<div class="note"><h2>沒有符合的商品</h2>
+      <p>換個關鍵字，或把商品加進 <code>watchlist.json</code> 後重跑採集。</p>
+      <p style="margin-top:10px">想讓任何關鍵字都能即時查各平台，
+      部署 <code>edge/</code> 那支代理並填進 <code>web/config.json</code>。</p></div>`));
+    return;
+  }
+  hits.slice(0,60).forEach((x,i) => out.append(card(x,i)));
+  if (SEARCH_API && k.length >= 2) liveSearch(q.trim());
+}
+
+/* ── 即時搜尋 ─────────────────────────────────
+   已採集的商品只有 watchlist 上那些。使用者打的關鍵字多半不在其中，
+   這時就現場去問代理。結果放在已採集商品後面，並明確標示是即時查的
+   —— 它沒有歷史價格曲線，跟排程採集的資料不是同一種東西。 */
+async function liveSearch(q){
+  const out = document.getElementById('out');
+  const seq = ++liveSeq;
+  const box = el(`<section class="livesearch"><div class="live-head">
+    <span class="live-tag">即時查詢</span><span class="live-msg">查詢各平台中…</span></div></section>`);
+  out.append(box);
+
+  let data;
+  try {
+    const u = new URL(SEARCH_API + '/search');
+    u.searchParams.set('q', q);
+    u.searchParams.set('limit', '20');
+    if (EXCLUDE.length) u.searchParams.set('exclude', EXCLUDE.join(','));
+    const r = await fetch(u, {cache:'no-store'});
+    data = await r.json();
+    if (!r.ok) throw new Error(data.error || `HTTP ${r.status}`);
+  } catch (e) {
+    if (seq !== liveSeq) return;                 // 使用者已經改字了，這個結果過期了
+    box.querySelector('.live-msg').textContent = `即時查詢失敗：${e.message}`;
+    return;
+  }
+  if (seq !== liveSeq) { box.remove(); return; }
+
+  const offers = (data.offers || []);
+  if (!offers.length){
+    box.querySelector('.live-msg').textContent = '各平台都沒有找到這個商品';
+    return;
+  }
+  box.querySelector('.live-msg').textContent =
+    `${offers.length} 筆` + (data.errors && data.errors.length
+      ? `（${data.errors.map(e => PLAT[e.platform]||e.platform).join('、')} 查詢失敗）` : '');
+
+  offers.forEach(o => {
+    const a = el(`<a class="live-row" href="${esc(o.url)}" target="_blank" rel="noopener nofollow"></a>`);
+    a.append(el(o.image
+      ? `<figure class="thumb sm"><img src="${esc(o.image)}" alt="" loading="lazy"
+           referrerpolicy="no-referrer" onerror="this.closest('figure').classList.add('none');this.remove()"></figure>`
+      : `<figure class="thumb sm none" aria-hidden="true"></figure>`));
+    a.append(el(`<span class="live-title">${esc(o.title)}</span>`));
+    a.append(el(`<span class="live-price">$${money(o.price)}<small>${PLAT[o.platform]||o.platform}</small></span>`));
+    box.append(a);
+  });
+}
+
+/* 縮圖：採集時每一筆報價都存了 image，挑第一個有圖的通路來用。
+   loading=lazy —— 一頁最多 60 張圖，一次全載會拖垮手機。
+   載不出來就把整個 <figure> 收掉，不要留一個破圖框。 */
+function thumbOf(x){
+  const src = Object.values(x.offers || {}).map(o => o && o.image).find(Boolean);
+  if (!src) return '<figure class="thumb none" aria-hidden="true"></figure>';
+  // referrerpolicy：圖片 CDN 常以 Referer 擋外連，不送 referer 反而載得到
+  return `<figure class="thumb"><img src="${esc(src)}" alt="" loading="lazy" decoding="async"
+    referrerpolicy="no-referrer"
+    onerror="this.closest('figure').classList.add('none');this.remove()"></figure>`;
+}
+
+function card(x, ci){
+  const rows = Object.entries(x.offers)
+    .filter(([,o]) => o.price > 0)
+    .sort((a,b) => a[1].price - b[1].price);
+  const lo = rows[0][1].price;
+
+  const board = el(`<article class="board"></article>`);
+  board.append(el(`
+    <div class="board-head">
+      ${thumbOf(x)}
+      <div class="head-txt">
+        <div class="title">${esc(x.title)}</div>
+        <div class="sub">${rows.length} 個通路${x.model?' · '+esc(x.model.toUpperCase()):''}</div>
+      </div>
+      <div class="trend" data-fp="${x.fp}"><span class="flat">···</span><small>90天</small></div>
+    </div>`));
+
+  rows.forEach(([plat,o],ri) => {
+    const diff = o.price - lo;
+    const a = el(`<a class="row" href="${esc(o.url)}" target="_blank" rel="noopener nofollow"></a>`);
+    a.append(el(`<span class="plat">${PLAT[plat]||plat}</span>`));
+    a.append(flaps(o.price, ci*90 + ri*40));
+    // 可疑配對不要標「最低」也不要報價差 —— 那個數字是假的
+    a.append(el(x.suspect
+      ? `<span class="gap">?</span>`
+      : ri === 0 ? `<span class="best">最低</span>`
+                 : `<span class="gap">+${money(diff)}</span>`));
+    board.append(a);
+  });
+
+  if (x.suspect){
+    board.append(el(`<div class="suspect">價差過大，這兩筆可能不是同一件商品。
+      請點進各平台自行確認，先不要當成比價結果。</div>`));
+  }
+
+  const holder = el(`<div class="spark"><span class="lbl">${PLAT[rows[0][0]]||rows[0][0]} 90 天</span></div>`);
+  board.append(holder);
+  loadSpark(x.fp, rows[0][0], holder, board.querySelector('.trend'));
+  return board;
+}
+
+/* 翻牌數字：逐格延遲，模擬機械翻動 */
+function flaps(price, baseDelay){
+  const box = el(`<span class="flaps"></span>`);
+  ('$'+money(price)).split('').forEach((ch,i) => {
+    const cell = el(`<span class="flap${/[\d]/.test(ch)?'':' sym'}">${ch}</span>`);
+    cell.style.animationDelay = (baseDelay + i*32) + 'ms';
+    box.append(cell);
+  });
+  return box;
+}
+
+async function loadSpark(fp, plat, holder, trendEl){
+  let doc;
+  try { doc = await fetchSeries(fp); } catch { holder.remove(); return; }
+  const pts = (doc.series||{})[plat] || [];
+  if (pts.length < 3){ holder.remove(); return; }
+
+  const ys = pts.map(p=>p[1]), xs = pts.map(p=>p[0]);
+  const y0=Math.min(...ys), y1=Math.max(...ys), span=(y1-y0)||1;
+  const x0=xs[0], xspan=(xs[xs.length-1]-x0)||1;
+  const W=100, H=30;
+  const d = pts.map((p,i) =>
+    `${i?'L':'M'}${((p[0]-x0)/xspan*W).toFixed(2)},${(H-(p[1]-y0)/span*H).toFixed(2)}`).join('');
+
+  const last = ys[ys.length-1], first = ys[0];
+  const pct = ((last-first)/first*100);
+  const cls = pct < -1 ? 'lo' : pct > 1 ? 'hi' : 'flat';
+  const stroke = cls==='lo' ? '#5FD6A6' : cls==='hi' ? '#E8836A' : '#9C7433';
+
+  holder.append(el(`<svg viewBox="0 0 ${W} ${H}" preserveAspectRatio="none" aria-hidden="true">
+    <path d="${d}" fill="none" stroke="${stroke}" stroke-width="1.6"
+          stroke-linejoin="round" vector-effect="non-scaling-stroke"/>
+  </svg>`));
+  holder.append(el(`<span class="lbl">低 $${money(y0)}</span>`));
+  trendEl.innerHTML =
+    `<span class="${cls}">${pct>0?'+':''}${pct.toFixed(1)}%</span><small>90天</small>`;
+}
+
+function fetchSeries(fp){
+  if (SERIES.has(fp)) return SERIES.get(fp);
+  const p = fetch(`${DATA}/series/${fp.slice(0,2)}/${fp}.json`).then(r=>{
+    if(!r.ok) throw new Error('no series'); return r.json();
+  });
+  SERIES.set(fp,p);
+  return p;
+}
+
+function esc(s){ return String(s??'').replace(/[&<>"']/g, c =>
+  ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+
+let t; document.getElementById('q').addEventListener('input', e => {
+  clearTimeout(t); t = setTimeout(() => render(e.target.value), 130);
+});
+
+document.querySelector('.sortbar').addEventListener('click', e => {
+  const btn = e.target.closest('.sortbtn');
+  if (!btn || !SORTS[btn.dataset.sort]) return;
+  SORT = btn.dataset.sort;
+  document.querySelectorAll('.sortbtn').forEach(b =>
+    b.classList.toggle('is-on', b === btn));
+  render(document.getElementById('q').value);
+});
+
+boot();
+</script>
+</body>
+</html>
