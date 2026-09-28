@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - "tools/probe_platforms.py"
+      - "tools/tw_sites.json"
       - ".github/workflows/probe.yml"
 
 permissions:
@@ -17,7 +18,7 @@ permissions:
 jobs:
   probe:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -36,3 +37,9 @@ jobs:
 
       - name: 深入偵察 蝦皮
         run: python tools/probe_platforms.py --deep shopee
+
+      - name: 大範圍探勘（BigGo 開源站台表裡的 237 個台灣電商）
+        # 只走各站自己公開的搜尋入口，每站最多 5 個請求。
+        # 失敗不影響前面的偵察結果。
+        continue-on-error: true
+        run: python tools/probe_platforms.py --discover tools/tw_sites.json

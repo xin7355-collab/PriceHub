@@ -276,9 +276,198 @@ def deep(name: str) -> int:
     return 0
 
 
+# ================================================================ 大範圍探勘
+# --discover：拿一份網域清單（tools/tw_sites.json，取自 BigGo 擴充功能的
+# 開源站台表），逐站找出「它自己公開的搜尋網址」，再用跟 momo 同一套方法
+# 檢查搜尋結果頁裡有沒有現成的結構化商品資料。
+#
+# 只用站台自己公開的搜尋入口（OpenSearch 描述檔、首頁上 method=GET 的搜尋表單），
+# 不猜網址。猜出來的網址即使剛好打得通，也不代表對方願意被這樣用。
+# 每站最多 5 個請求，彼此之間有間隔；不同站台才平行。
+
+DISCOVER_KEYWORD = "耳機"        # 3C 電商幾乎都有，非 3C 的站台搜不到也正常
+DISCOVER_WORKERS = 8
+DISCOVER_TIMEOUT = 12
+DISCOVER_GAP = 0.6               # 同一站台兩個請求之間至少隔這麼久
+
+OPENSEARCH_LINK_RE = re.compile(
+    r'<link[^>]+type=["\']application/opensearchdescription\+xml["\'][^>]*>', re.I)
+HREF_RE = re.compile(r'href=["\']([^"\']+)["\']', re.I)
+OS_TEMPLATE_RE = re.compile(
+    r'<Url[^>]+type=["\']text/html["\'][^>]*template=["\']([^"\']+)["\']'
+    r'|<Url[^>]+template=["\']([^"\']+)["\'][^>]*type=["\']text/html["\']', re.I)
+FORM_RE = re.compile(r"<form\b([^>]*)>(.*?)</form>", re.I | re.S)
+ATTR_RE = lambda name: re.compile(name + r'\s*=\s*["\']([^"\']*)["\']', re.I)
+INPUT_NAME_RE = re.compile(
+    r'<input\b[^>]*\bname\s*=\s*["\'](q|keyword|keywords|kw|query|search|'
+    r'searchword|key|k|s|w|word|text|term)["\']', re.I)
+
+
+def _norm_home(dom: str) -> str:
+    dom = dom.strip()
+    if not dom.startswith("http"):
+        dom = "https://" + dom
+    u = urllib.parse.urlparse(dom)
+    return f"{u.scheme}://{u.netloc}/"
+
+
+def _get(url: str):
+    """回 (status, text)；任何錯誤都吞掉並回報，一站失敗不該拖垮整批。"""
+    try:
+        status, ctype, body = fetch(url, timeout=DISCOVER_TIMEOUT)
+        return status, body[:3_000_000].decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        return e.code, ""
+    except Exception as e:
+        return type(e).__name__, ""
+
+
+def find_search_url(home: str, html: str, gap) -> tuple[str, str] | None:
+    """找站台自己公開的搜尋入口。回 (網址模板, 來源)，模板以 {q} 代表關鍵字。"""
+    # 1) OpenSearch：站台明確宣告「我的搜尋網址長這樣」，最可靠
+    for tag in OPENSEARCH_LINK_RE.findall(html):
+        m = HREF_RE.search(tag)
+        if not m:
+            continue
+        gap()
+        st, xml = _get(urllib.parse.urljoin(home, m.group(1)))
+        if st == 200:
+            t = OS_TEMPLATE_RE.search(xml)
+            if t:
+                tpl = (t.group(1) or t.group(2)).replace("&amp;", "&")
+                tpl = re.sub(r"\{searchTerms\}", "{q}", tpl)
+                tpl = re.sub(r"[?&][^=&]+=\{[^}]*\?\}", "", tpl)   # 丟掉選填參數
+                return urllib.parse.urljoin(home, tpl), "opensearch"
+    # 2) 首頁上的 GET 搜尋表單
+    for attrs, inner in FORM_RE.findall(html):
+        method = (ATTR_RE("method").search(attrs) or [None, "get"])[1].lower()
+        if method != "get":
+            continue
+        m = INPUT_NAME_RE.search(inner)
+        if not m:
+            continue
+        action = (ATTR_RE("action").search(attrs) or [None, ""])[1]
+        base = urllib.parse.urljoin(home, action or "/")
+        sep = "&" if "?" in base else "?"
+        return f"{base}{sep}{m.group(1)}={{q}}", "form"
+    return None
+
+
+def analyze_results(html: str) -> dict:
+    """搜尋結果頁裡有什麼現成的資料。判準與 momo 那次完全相同。"""
+    # 不能用 find_products：它為了 --deep 的顯示只收前 3 個就停，
+    # 拿來計數會把 30 個商品報成 3 個。
+    def count(node, depth=0):
+        if depth > 8:
+            return 0
+        if isinstance(node, list):
+            return sum(count(v, depth + 1) for v in node)
+        if not isinstance(node, dict):
+            return 0
+        t = node.get("@type")
+        own = 1 if ((t == "Product" or (isinstance(t, list) and "Product" in t))
+                    and isinstance(node.get("name"), str)
+                    and ("offers" in node or "price" in node)) else 0
+        return own + sum(count(v, depth + 1) for v in node.values())
+
+    n_products = 0
+    for raw in LD_JSON_RE.findall(html):
+        try:
+            n_products += count(json.loads(raw.strip()))
+        except Exception:
+            pass
+    embedded = [n for n, rx in EMBEDDED if n != "application/ld+json" and rx.search(html)]
+    prices = re.findall(r"(?:NT\$|\$)\s?[1-9][\d,]{2,9}", html)
+    return {"ld_products": n_products, "embedded": embedded, "prices": len(prices),
+            "bytes": len(html)}
+
+
+def discover_one(key: str, dom: str) -> dict:
+    import time
+    last = [0.0]
+
+    def gap():
+        wait = DISCOVER_GAP - (time.monotonic() - last[0])
+        if wait > 0:
+            time.sleep(wait)
+        last[0] = time.monotonic()
+
+    home = _norm_home(dom)
+    r = {"key": key, "home": home}
+    gap()
+    st, html = _get(home)
+    r["home_status"] = st
+    if st != 200:
+        r["verdict"] = "連不上"
+        return r
+
+    found = find_search_url(home, html, gap)
+    if not found:
+        r["verdict"] = "找不到公開的搜尋入口"
+        return r
+    tpl, src = found
+    url = tpl.replace("{q}", urllib.parse.quote(DISCOVER_KEYWORD))
+    r.update(search_url=url, search_src=src)
+
+    rb = robots_blocks(url, urllib.parse.urlparse(url).path)
+    r["robots"] = rb
+    if rb.startswith("擋住") or rb.startswith("全站"):
+        r["verdict"] = "robots.txt 禁止"
+        return r
+
+    gap()
+    st, res = _get(url)
+    r["search_status"] = st
+    if st != 200:
+        r["verdict"] = f"搜尋頁 HTTP {st}"
+        return r
+    a = analyze_results(res)
+    r.update(a)
+    if a["ld_products"] >= 3:
+        r["verdict"] = "A 結構化商品資料（同 momo，可直接接）"
+    elif a["embedded"]:
+        r["verdict"] = "B 內嵌前端狀態 JSON（可接，要寫解析）"
+    elif a["prices"] >= 5:
+        r["verdict"] = "C HTML 裡有價格（要解 HTML，較脆弱）"
+    else:
+        r["verdict"] = "D 搜尋頁沒有可用資料（多半是 JS 渲染）"
+    return r
+
+
+def discover(path: str) -> int:
+    from concurrent.futures import ThreadPoolExecutor
+
+    sites = json.loads(Path(path).read_text(encoding="utf-8"))["sites"]
+    print(f"探勘 {len(sites)} 個站台，關鍵字「{DISCOVER_KEYWORD}」，"
+          f"{DISCOVER_WORKERS} 站平行、同站請求間隔 {DISCOVER_GAP}s\n")
+    with ThreadPoolExecutor(DISCOVER_WORKERS) as ex:
+        rows = list(ex.map(lambda kv: discover_one(*kv), sites.items()))
+
+    order = {"A": 0, "B": 1, "C": 2, "D": 3}
+    rows.sort(key=lambda r: (order.get(r["verdict"][0], 9), r["key"]))
+    for r in rows:
+        extra = ""
+        if "ld_products" in r:
+            extra = (f"  ld+json 商品 {r['ld_products']}　內嵌 {','.join(r['embedded']) or '-'}"
+                     f"　價格字樣 {r['prices']}")
+        tag = r["verdict"][0] if r["verdict"][0] in "ABCD" else "-"
+        note = "" if tag != "-" else f"  {r['verdict']}"
+        print(f"{tag}  {r['key']:34}{extra}{note}")
+        if r.get("search_url") and r["verdict"][0] in "ABC":
+            print(f"    {r['search_src']:10} {r['search_url']}")
+
+    import collections
+    c = collections.Counter(r["verdict"] for r in rows)
+    print("\n── 結論")
+    for k, v in sorted(c.items(), key=lambda kv: order.get(kv[0][0], 9)):
+        print(f"   {v:4}  {k}")
+    return 0
+
 def main() -> int:
     if len(sys.argv) > 2 and sys.argv[1] == "--deep":
         return deep(sys.argv[2])
+    if len(sys.argv) > 2 and sys.argv[1] == "--discover":
+        return discover(sys.argv[2])
 
     print(f"關鍵字：{KEYWORD}　每個平台只送一次請求\n")
     rows = []
